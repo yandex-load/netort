@@ -14,13 +14,13 @@ common library for yandex-load org
     namespace_packages=["netort"],
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
-    #    'psutil>=1.2.1'
+        'serial', 'requests',
     ],
     setup_requires=[
-    #    'pytest-runner', 'flake8',
+        # 'pytest-runner', 'flake8',
     ],
     tests_require=[
-    #    'pytest',
+        # 'pytest',
     ],
     license='LGPLv2',
     classifiers=[
