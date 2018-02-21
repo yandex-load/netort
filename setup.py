@@ -3,7 +3,6 @@ from setuptools import setup, find_packages
 setup(
     name='netort',
     version='0.0.1',
-
     description='common library for yandex-load org',
     longer_description='''
 common library for yandex-load org
@@ -11,7 +10,6 @@ common library for yandex-load org
     maintainer='Timur Torubarov (load testing)',
     maintainer_email='netort@yandex-team.ru',
     url='http://github.com/yandex-load/netort',
-    namespace_packages=["netort"],
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
         'serial', 'requests',
