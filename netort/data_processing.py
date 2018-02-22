@@ -76,3 +76,11 @@ class Tee(threading.Thread):
         self._interrupted.set()
 
 
+class Chopper(object):
+    def __init__(self, source):
+        self.source = source
+
+    def __iter__(self):
+        for chunk in self.source:
+            for item in chunk:
+                yield item
