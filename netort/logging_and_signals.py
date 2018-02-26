@@ -1,5 +1,8 @@
 import logging
 import sys
+import signal
+
+logger = logging.getLogger(__name__)
 
 
 class SingleLevelFilter(logging.Filter):
@@ -68,3 +71,32 @@ def init_logging(log_filename, verbose, quiet):
     stderr_hdl.addFilter(f_info)
     stderr_hdl.addFilter(f_debug)
     logger.addHandler(stderr_hdl)
+
+
+# ============= signals handler =========
+def signal_handler(sig, frame):
+    """ required for non-tty python runs to interrupt """
+    logger.warning("Got signal %s, going to stop", sig)
+    raise KeyboardInterrupt()
+
+
+def ignore_handler(sig, frame):
+    logger.warning("Got signal %s, ignoring", sig)
+
+
+def set_sig_handler():
+    uncatchable = ['SIG_DFL', 'SIGSTOP', 'SIGKILL']
+    ignore = ['SIGCHLD', 'SIGCLD']
+    all_sig = [s for s in dir(signal) if s.startswith("SIG")]
+    for sig_name in ignore:
+        try:
+            sig_num = getattr(signal, sig_name)
+            signal.signal(sig_num, ignore_handler)
+        except Exception:
+            pass
+    for sig_name in [s for s in all_sig if s not in (uncatchable + ignore)]:
+        try:
+            sig_num = getattr(signal, sig_name)
+            signal.signal(sig_num, signal_handler)
+        except Exception as ex:
+            logger.error("Can't set handler for %s, %s", sig_name, ex)
