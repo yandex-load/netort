@@ -53,7 +53,7 @@ class ValidatedConfig(object):
         self.META_LOCATION = core_section
         try:
             config[self.META_LOCATION]
-        except NameError:
+        except (NameError, KeyError):
             config[self.META_LOCATION] = {}
         self.__raw_config_dict = config
         self.with_dynamic_options = with_dynamic_options
