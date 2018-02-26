@@ -12,7 +12,7 @@ common library for yandex-load org
     url='http://github.com/yandex-load/netort',
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
-        'serial', 'requests',
+        'serial', 'requests', 'cerberus'
     ],
     setup_requires=[
         # 'pytest-runner', 'flake8',
