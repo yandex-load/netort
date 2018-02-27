@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import traceback
 import serial
+import platform
 from contextlib import closing
 
 logger = logging.getLogger(__name__)
@@ -151,12 +152,14 @@ class HttpOpener(object):
         For large files returns wrapped http stream.
     """
 
-    def __init__(self, url):
+    def __init__(self, url, timeout=10, params=None, skip_proto_errors=False):
         self.url = url
         self.fmt_detector = FormatDetector()
         self.force_download = None
         self.data_info = None
-        self.timeout = 10
+        self.timeout = timeout
+        self.params = params
+        self.skip_proto_errors = skip_proto_errors
         self.get_request_info()
 
     def __call__(self, *args, **kwargs):
@@ -165,7 +168,7 @@ class HttpOpener(object):
     def open(self, *args, **kwargs):
         with closing(
                 requests.get(
-                    self.url, stream=True, verify=False,
+                    self.url, params=self.params, stream=True, verify=False,
                     timeout=self.timeout)) as stream:
             stream_iterator = stream.raw.stream(100, decode_content=True)
             header = stream_iterator.next()
@@ -186,7 +189,7 @@ class HttpOpener(object):
     def download_file(self):
         hasher = hashlib.md5()
         hasher.update(self.hash)
-        tmpfile_path = "/tmp/%s.apk" % hasher.hexdigest()
+        tmpfile_path = "/tmp/%s.downloaded_resource" % hasher.hexdigest()
         if os.path.exists(tmpfile_path):
             logger.info(
                 "Resource %s has already been downloaded to %s . Using it..",
@@ -194,18 +197,20 @@ class HttpOpener(object):
         else:
             logger.info("Downloading resource %s to %s", self.url, tmpfile_path)
             try:
-                data = requests.get(self.url, verify=False, timeout=10)
-            except requests.exceptions.Timeout as exc:
-                raise RuntimeError(
-                    'Connection timeout reached '
-                    'trying to download resource: %s \n'
-                    'via HttpOpener: %s' % (self.url, exc))
-            f = open(tmpfile_path, "wb")
-            f.write(data.content)
-            f.close()
-            logger.info(
-                "Successfully downloaded resource %s to %s", self.url,
-                tmpfile_path)
+                data = requests.get(self.url, params=self.params, verify=False, timeout=self.timeout)
+            except requests.exceptions.Timeout:
+                logger.info(
+                    'Connection timeout reached trying to download resource via HttpOpener: %s',
+                    self.url, exc_info=True
+                )
+                raise
+            else:
+                f = open(tmpfile_path, "wb")
+                f.write(data.content)
+                f.close()
+                logger.info(
+                    "Successfully downloaded resource %s to %s", self.url,
+                    tmpfile_path)
         return tmpfile_path
 
     def get_request_info(self):
@@ -220,26 +225,19 @@ class HttpOpener(object):
                 verify=False,
                 allow_redirects=True,
                 timeout=self.timeout)
-        except (
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError) as exc:
-            logger.warning(
-                'Connection error trying to get info about resource %s \n'
-                'Exception: %s \n'
-                'Retrying...' % (self.url, exc))
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            logger.warn('Connection error trying to get info for resource %s. Retrying...', self.url, exc_info=True)
             try:
                 self.data_info = session.send(
                     prepared,
                     verify=False,
                     allow_redirects=True,
                     timeout=self.timeout)
-            except Exception as exc:
-                logger.debug(
-                    'Connection error trying to get info about resource %s \n'
-                    'Traceback:  %s' % (traceback.format_exc(exc), self.url))
-                raise RuntimeError(
-                    'Connection error trying to get info about resource %s.'
-                    'Exception: %s' % (self.url, exc))
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                logger.warning(
+                    'Connection error trying to get info for resource %s. Retrying...',
+                    self.url, exc_info=True)
+                raise
         finally:
             session.close()
         try:
@@ -251,10 +249,8 @@ class HttpOpener(object):
                 )
                 self.force_download = True
             else:
-                raise RuntimeError(
-                    'Invalid HTTP response '
-                    'trying to get info about resource: %s \n'
-                    'via HttpOpener: %s' % (self.url, exc))
+                logger.warn('Invalid HTTP response trying to get info about resource: %s', self.url, exc_info=True)
+                raise
 
     @property
     def get_filename(self):
@@ -288,20 +284,16 @@ class HttpStreamWrapper:
             self.stream = requests.get(
                 self.url, stream=True, verify=False, timeout=10)
             self.stream_iterator = self.stream.iter_content(self.chunk_size)
-        except (
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError) as exc:
-            raise RuntimeError(
-                'Connection errors or timeout reached '
-                'trying to make stream while downloading resource: %s \n'
-                'via HttpStreamWrapper: %s' % (self.url, exc))
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            logger.warn(
+                'Connection errors or timeout reached trying to create HTTP stream for res: %s', self.url, exc_info=True
+            )
+            raise
         try:
             self.stream.raise_for_status()
-        except requests.exceptions.HTTPError as exc:
-            raise RuntimeError(
-                'Invalid HTTP response'
-                'trying to open stream for resource: %s\n'
-                'via HttpStreamWrapper: %s' % (self.url, exc))
+        except requests.exceptions.HTTPError:
+            logger.warn('Invalid HTTP response trying to open stream for resource: %s', self.url, exc_info=True)
+            raise
 
     def __enter__(self):
         return self
@@ -319,20 +311,16 @@ class HttpStreamWrapper:
             self.stream = requests.get(
                 self.url, stream=True, verify=False, timeout=30)
             self.stream_iterator = self.stream.iter_content(self.chunk_size)
-        except (
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError) as exc:
-            raise RuntimeError(
-                'Connection errors or timeout reached '
-                'trying to reopen stream while downloading resource: %s \n'
-                'via HttpStreamWrapper: %s' % (self.url, exc))
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            logger.warn('Connection errors or timeout reached trying to reopen stream while downloading resource: %s',
+                        self.url, exc_info=True)
+            raise
         try:
             self.stream.raise_for_status()
         except requests.exceptions.HTTPError as exc:
-            raise RuntimeError(
-                'Invalid HTTP response'
-                'trying to reopen stream for resource: %s\n'
-                'via HttpStreamWrapper: %s' % (self.url, exc))
+            logger.warn('Invalid HTTP response trying to reopen stream for resource: %s',
+                        self.url, exc_info=True)
+            raise
         self._content_consumed = False
 
     def _enhance_buffer(self):
