@@ -164,7 +164,7 @@ class HttpOpener(object):
     def open(self, *args, **kwargs):
         with closing(
                 requests.get(
-                    self.url, params=self.params, stream=True, verify=False,
+                    self.url, stream=True, verify=False,
                     timeout=self.timeout)) as stream:
             stream_iterator = stream.raw.stream(100, decode_content=True)
             header = stream_iterator.next()
@@ -193,11 +193,10 @@ class HttpOpener(object):
         else:
             logger.info("Downloading resource %s to %s", self.url, tmpfile_path)
             try:
-                data = requests.get(self.url, params=self.params, verify=False, timeout=self.timeout)
+                data = requests.get(self.url, verify=False, timeout=self.timeout)
             except requests.exceptions.Timeout:
                 logger.info('Connection timeout reached trying to download resource via HttpOpener: %s',
-                    self.url, exc_info=True
-                )
+                            self.url, exc_info=True)
                 raise
             else:
                 f = open(tmpfile_path, "wb")
@@ -310,7 +309,7 @@ class HttpStreamWrapper:
             raise
         try:
             self.stream.raise_for_status()
-        except requests.exceptions.HTTPError as exc:
+        except requests.exceptions.HTTPError:
             logger.warn('Invalid HTTP response trying to reopen stream for resource: %s',
                         self.url, exc_info=True)
             raise
