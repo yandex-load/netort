@@ -4,9 +4,7 @@ import os
 import requests
 import gzip
 import hashlib
-import traceback
 import serial
-import platform
 from contextlib import closing
 
 logger = logging.getLogger(__name__)
@@ -152,14 +150,12 @@ class HttpOpener(object):
         For large files returns wrapped http stream.
     """
 
-    def __init__(self, url, timeout=10, params=None, skip_proto_errors=False):
+    def __init__(self, url, timeout=10):
         self.url = url
         self.fmt_detector = FormatDetector()
         self.force_download = None
         self.data_info = None
         self.timeout = timeout
-        self.params = params
-        self.skip_proto_errors = skip_proto_errors
         self.get_request_info()
 
     def __call__(self, *args, **kwargs):
@@ -199,8 +195,7 @@ class HttpOpener(object):
             try:
                 data = requests.get(self.url, params=self.params, verify=False, timeout=self.timeout)
             except requests.exceptions.Timeout:
-                logger.info(
-                    'Connection timeout reached trying to download resource via HttpOpener: %s',
+                logger.info('Connection timeout reached trying to download resource via HttpOpener: %s',
                     self.url, exc_info=True
                 )
                 raise
@@ -208,13 +203,11 @@ class HttpOpener(object):
                 f = open(tmpfile_path, "wb")
                 f.write(data.content)
                 f.close()
-                logger.info(
-                    "Successfully downloaded resource %s to %s", self.url,
-                    tmpfile_path)
+                logger.info("Successfully downloaded resource %s to %s", self.url, tmpfile_path)
         return tmpfile_path
 
     def get_request_info(self):
-        logger.info('Trying to get info about resource %s', self.url)
+        logger.debug('Trying to get info about resource %s', self.url)
         req = requests.Request(
             'HEAD', self.url, headers={'Accept-Encoding': 'identity'})
         session = requests.Session()
