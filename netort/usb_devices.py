@@ -42,12 +42,12 @@ class UsbHandler(object):
         ]
 
     @staticmethod
-    def _get_devices_by_product_and_vendor_id(product_id, vendor_id):
+    def _get_devices_by_product_and_vendor_id(vendor_id, product_id):
         ctx = usb1.USBContext()
         return [
             (device, None)
             for device in ctx.getDeviceList(skip_on_error=True)
-            if device.getProductID() == product_id and device.getVendorID() == vendor_id
+            if device.getVendorID() == vendor_id and device.getProductID() == product_id
         ]
 
     def get_devices(self):
