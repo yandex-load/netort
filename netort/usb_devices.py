@@ -15,7 +15,7 @@ class UsbHandler(object):
     IPHONE_PRODUCT_ID = 0x12a8
     IPAD_PRODUCT_ID = 0x12ab
 
-    def __init__(self, source, device_type='android', timeout=10000):
+    def __init__(self, source=None, device_type='android', timeout=10000):
         super(UsbHandler, self).__init__()
         self.timeout = timeout
         self.source = source
@@ -45,7 +45,8 @@ class UsbHandler(object):
     def _get_devices_by_product_and_vendor_id(product_id, vendor_id):
         ctx = usb1.USBContext()
         return [
-            device for device in ctx.getDeviceList(skip_on_error=True)
+            (device, None)
+            for device in ctx.getDeviceList(skip_on_error=True)
             if device.getProductID() == product_id and device.getVendorID() == vendor_id
         ]
 
