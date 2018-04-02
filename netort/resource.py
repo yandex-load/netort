@@ -158,10 +158,10 @@ class HttpOpener(object):
         self.timeout = timeout
         self.get_request_info()
 
-    def __call__(self, *args, **kwargs):
-        return self.open(*args, **kwargs)
+    def __call__(self, use_cache=True, *args, **kwargs):
+        return self.open(use_cache, *args, **kwargs)
 
-    def open(self, use_cache=True, *args, **kwargs):
+    def open(self, use_cache, *args, **kwargs):
         with closing(
                 requests.get(
                     self.url, stream=True, verify=False,
