@@ -96,7 +96,7 @@ class SerialOpener(object):
         self.device = device
         self.read_timeout = read_timeout
 
-    def __call__(self):
+    def __call__(self, *args, **kwargs):
         return serial.Serial(self.device, self.baud_rate, timeout=self.read_timeout)
 
     @property
@@ -112,7 +112,7 @@ class FileOpener(object):
         self.f_path = f_path
         self.fmt_detector = FormatDetector()
 
-    def __call__(self):
+    def __call__(self, *args, **kwargs):
         with open(self.f_path, 'rb') as resource:
             header = resource.read(300)
         fmt = self.fmt_detector.detect_format(header)
@@ -158,10 +158,10 @@ class HttpOpener(object):
         self.timeout = timeout
         self.get_request_info()
 
-    def __call__(self, *args, **kwargs):
-        return self.open(*args, **kwargs)
+    def __call__(self, use_cache=True, *args, **kwargs):
+        return self.open(use_cache, *args, **kwargs)
 
-    def open(self, *args, **kwargs):
+    def open(self, use_cache, *args, **kwargs):
         with closing(
                 requests.get(
                     self.url, stream=True, verify=False,
@@ -176,17 +176,15 @@ class HttpOpener(object):
             )
             return HttpStreamWrapper(self.url)
         else:
-            downloaded_f_path = self.download_file()
+            downloaded_f_path = self.download_file(use_cache)
             if fmt == 'gzip':
                 return gzip.open(downloaded_f_path, mode='rb')
             else:
                 return open(downloaded_f_path, 'rb')
 
-    def download_file(self):
-        hasher = hashlib.md5()
-        hasher.update(self.hash)
-        tmpfile_path = "/tmp/%s.downloaded_resource" % hasher.hexdigest()
-        if os.path.exists(tmpfile_path):
+    def download_file(self, use_cache):
+        tmpfile_path = self.tmpfile_path()
+        if os.path.exists(tmpfile_path) and use_cache:
             logger.info(
                 "Resource %s has already been downloaded to %s . Using it..",
                 self.url, tmpfile_path)
@@ -204,6 +202,11 @@ class HttpOpener(object):
                 f.close()
                 logger.info("Successfully downloaded resource %s to %s", self.url, tmpfile_path)
         return tmpfile_path
+
+    def tmpfile_path(self):
+        hasher = hashlib.md5()
+        hasher.update(self.hash)
+        return "/tmp/%s.downloaded_resource" % hasher.hexdigest()
 
     def get_request_info(self):
         logger.debug('Trying to get info about resource %s', self.url)
@@ -246,12 +249,13 @@ class HttpOpener(object):
 
     @property
     def get_filename(self):
-        config_f_path = self.download_file()
-        return config_f_path
+        return self.tmpfile_path()
 
     @property
     def hash(self):
         last_modified = self.data_info.headers.get("Last-Modified", '')
+        hash = self.url + "|" + last_modified
+        logger.info('Hash: {}'.format(hash))
         return self.url + "|" + last_modified
 
     @property
