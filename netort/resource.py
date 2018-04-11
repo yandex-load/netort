@@ -151,6 +151,7 @@ class HttpOpener(object):
     """
 
     def __init__(self, url, timeout=10):
+        self._filename = None
         self.url = url
         self.fmt_detector = FormatDetector()
         self.force_download = None
@@ -201,6 +202,7 @@ class HttpOpener(object):
                 f.write(data.content)
                 f.close()
                 logger.info("Successfully downloaded resource %s to %s", self.url, tmpfile_path)
+        self._filename = tmpfile_path
         return tmpfile_path
 
     def tmpfile_path(self):
@@ -249,7 +251,9 @@ class HttpOpener(object):
 
     @property
     def get_filename(self):
-        return self.tmpfile_path()
+        if not self._filename:
+            self.download_file(use_cache=True)
+        return self._filename
 
     @property
     def hash(self):
