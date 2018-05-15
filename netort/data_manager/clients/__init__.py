@@ -5,6 +5,5 @@ from .volta import VoltaUploader
 
 available_clients = {
     'luna': LunaClient,
-    'local_storage': LocalStorageClient,
-    'volta': VoltaUploader
+    'local_storage': LocalStorageClient
 }
