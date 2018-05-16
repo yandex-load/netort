@@ -72,15 +72,16 @@ class LunaClient(AbstractClient):
         Returns:
             job_id (basestring): Luna job id
         """
+        my_user_agent = None
         try:
-            my_user_agent = pkg_resources.require('datauploader')[0].version
+            my_user_agent = pkg_resources.require('netort')[0].version
         except pkg_resources.DistributionNotFound:
-            my_user_agent = 'Unknown'
+            my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
                 "Content-Type": "application/json",
-                "User-Agent": "{upward_ua}, Uploader/{uploader_ua}".format(
-                    upward_ua=self.meta.get('user_agent', 'Unknown'),
+                "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
+                    upward_ua=self.meta.get('user_agent', ''),
                     uploader_ua=my_user_agent
                 )
             }

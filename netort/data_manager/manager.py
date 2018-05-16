@@ -58,7 +58,11 @@ class DataSession(object):
         return self._artifacts_dir
 
     def close(self):
-        [client.close() for client in self.clients]
+        for client in self.clients:
+            try:
+                client.close()
+            except Exception:
+                logger.warn('Client %s failed to close', client)
         self.manager.close()
 
 
@@ -215,7 +219,7 @@ def usage_sample():
         'clients': [
             {
                 'type': 'luna',
-                'api_address': 'https://volta-back-testing.common-int.yandex-team.ru',
+                'api_address': 'http://hostname.tld',
                 'user_agent': 'Tank Test',
             },
             {

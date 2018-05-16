@@ -44,15 +44,13 @@ class MetricsRouter(threading.Thread):
             # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
             for type_ in self.routing_buffer:
                 try:
-                    [
+                    for callback, incoming_chunks in pd.merge(
+                        self.routing_buffer[type_], self.manager.callbacks,
+                        how='left',
+                        left_index=True,
+                        right_index=True
+                    ).groupby('callback'):
                         callback(incoming_chunks)
-                        for callback, incoming_chunks in pd.merge(
-                            self.routing_buffer[type_], self.manager.callbacks,
-                            how='left',
-                            left_index=True,
-                            right_index=True
-                        ).groupby('callback')
-                    ]
                 except TypeError:
                     logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
                                  type_, self.routing_buffer[type_], exc_info=True)
