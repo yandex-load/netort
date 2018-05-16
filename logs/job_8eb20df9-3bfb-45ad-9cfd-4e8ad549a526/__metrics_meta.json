@@ -1,3 +1,0 @@
-{
-    "metric_28172efa-5347-4315-b5c2-0a84dafd8efe": "{\"dtypes\": {\"ts\": \"int64\", \"value\": \"float64\"}, \"meta\": {\"some_meta_key\": \"some_meta_value\", \"hostname\": \"localhost\", \"type\": \"metrics\", \"name\": \"cpu_usage\"}, \"type\": \"metrics\", \"names\": [\"ts\", \"value\"]}"
-}
