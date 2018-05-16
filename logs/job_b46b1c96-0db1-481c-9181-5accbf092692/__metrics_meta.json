@@ -1,0 +1,19 @@
+{
+    "metric_d12dab4f-e4ef-4c47-89e6-859f73737c64": {
+        "dtypes": {
+            "ts": "int64", 
+            "value": "float64"
+        }, 
+        "meta": {
+            "hostname": "localhost", 
+            "name": "cpu_usage", 
+            "some_meta_key": "some_meta_value", 
+            "type": "metrics"
+        }, 
+        "names": [
+            "ts", 
+            "value"
+        ], 
+        "type": "metrics"
+    }
+}
