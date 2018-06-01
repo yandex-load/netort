@@ -27,15 +27,25 @@ RETRY_ARGS = dict(
 
 @retry(**RETRY_ARGS)
 def send_chunk(session, req, timeout=5):
-    r = session.send(req, verify=False, timeout=timeout)
-    logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
-    r.raise_for_status()
-    return r
+    try:
+        r = session.send(req, verify=False, timeout=timeout)
+    except requests.ConnectionError:
+        logger.warning('Connection error: %s', exc_info=True)
+        raise
+    except requests.HTTPError:
+        logger.warning('Http error: %s', exc_info=True)
+        raise
+    else:
+        logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
+        r.raise_for_status()
+        return r
 
 
 class LunaClient(AbstractClient):
     metric_registration = '/create_metric/'
-    metric_upload = '/upload_metric/?query='
+    metric_update = '/update_metric/'
+    # metric_upload = '/upload_metric/?query='  # production
+    metric_upload = '/?database=luna_test&query='  # testing
     job_registration = '/create_job/'
     dbname = 'luna'
 
@@ -79,7 +89,8 @@ class LunaClient(AbstractClient):
             my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
-                "Content-Type": "application/json",
+                # not json handler anymore
+                # "Content-Type": "application/json",
                 "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
                     upward_ua=self.meta.get('user_agent', ''),
                     uploader_ua=my_user_agent
@@ -93,7 +104,7 @@ class LunaClient(AbstractClient):
             ),
             headers=headers
         )
-        req.json = {
+        req.data = {
             'test_start': self.job.test_start
         }
         prepared_req = req.prepare()
@@ -106,13 +117,12 @@ class LunaClient(AbstractClient):
             raise
         else:
             logger.debug('Luna create job status: %s', response.status_code)
-            logger.debug('Answ data: %s', response.json())
-            job_id = response.json().get('job')
+            logger.debug('Answ data: %s', response.content)
+            job_id = response.content
             if not job_id:
-                logger.warning('Create job answ data: %s', response.json())
-                raise ValueError('Luna returned answer without jobid: %s', response.json())
+                raise ValueError('Luna returned answer without jobid: %s', response.content)
             else:
-                logger.info('Luna job created: $%s', job_id)
+                logger.info('Luna job created: %s', job_id)
                 return job_id
 
     def __test_id_link_to_jobno(self):
@@ -137,6 +147,8 @@ class LunaClient(AbstractClient):
         self.register_worker.join()
         self.worker.stop()
         self.worker.join()
+        # FIXME testing
+        logger.info('Luna job url: %s?id=%s', 'https://volta-testing.common-int.yandex-team.ru', self.job_number)
 
 
 class RegisterWorkerThread(threading.Thread):
@@ -169,20 +181,24 @@ class RegisterWorkerThread(threading.Thread):
             "{api_address}{path}".format(
                 api_address=self.client.api_address,
                 path=self.client.metric_registration
-            ),
-            headers = {"Content-Type": "application/json"}
+            )
+            # not json handler anymore
+            # headers = {"Content-Type": "application/json"}
         )
-        req.json = {
+        req.data = {
             'job': self.client.job_number,
             'type': metric.type,
             'local_id': metric.local_id
         }
         for meta_key, meta_value in metric.meta.items():
-            req.json[meta_key] = meta_value
+            req.data[meta_key] = meta_value
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
-        return response.json()['uniq_id']
+        if not response.content:
+            raise RuntimeError('Luna not returned uniq_id for metric registration: %s', response.content)
+        else:
+            return response.content
 
     def is_finished(self):
         return self._finished
@@ -217,45 +233,52 @@ class WorkerThread(threading.Thread):
             time.sleep(0.5)
         else:
             if df is not None:
-                metric_local_id = df.index[0]
-                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
-                if not metric:
-                    logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
-                    return
-                if metric.local_id in self.client.public_ids:
-                    df.loc[:, 'key_date'] = self.client.key_date
-                    df.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
-                    body = df.to_csv(
-                        sep='\t',
-                        header=False,
-                        index=False,
-                        na_rep="",
-                        columns=self.client.luna_columns + metric.columns
-                    )
-                    req = requests.Request(
-                        'POST', "{api}{data_upload_handler}{query}".format(
-                            #api='http://sas1-7845-sas-volta-clickhouse-te-ec2-24835.gencfg-c.yandex.net:24835',
-                            api=self.client.api_address,
-                            data_upload_handler=self.client.metric_upload,
-                            query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=metric.type)
+                for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+                    metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+                    if not metric:
+                        logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
+                        return
+                    if metric.local_id in self.client.public_ids:
+                        df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
+                        df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
+                        body = df_grouped_by_id.to_csv(
+                            sep='\t',
+                            header=False,
+                            index=False,
+                            na_rep="",
+                            columns=self.client.luna_columns + metric.columns
+                        )
+                        req = requests.Request(
+                            'POST', "{api}{data_upload_handler}{query}".format(
+                                #api='http://sas1-7845-sas-volta-clickhouse-te-ec2-24835.gencfg-c.yandex.net:24835',
+                                api='https://vla-kvh4wvcc4lk0uj0s.db.yandex.net:8443', # testing
+                                #api=self.client.api_address, # production proxy
+                                data_upload_handler=self.client.metric_upload,
+                                query="INSERT INTO {table} FORMAT TSV".format(
+                                    #table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
+                                    table="{type}".format(db=self.client.dbname, type=metric.type) # testing
+                                )
                             )
                         )
-                    )
-                    req.data = body
-                    prepared_req = req.prepare()
-                    logger.debug('Prepared upload request:\n%s', pretty_print(prepared_req))
-                    try:
-                        send_chunk(self.session, prepared_req)
-                    except RetryError:
-                        logger.warning(
-                            'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data: \n%s', df, exc_info=True
-                        )
-                        return
-                else:
-                    # no public_id yet, put it back
-                    self.client.pending_queue.put(df)
+                        # only for testing purpose below
+                        req.headers = {
+                            'X-ClickHouse-User': 'lunapark',
+                            'X-ClickHouse-Key': 'lunapark'
+                        }
+                        req.data = body
+                        prepared_req = req.prepare()
+                        # logger.debug('Prepared upload request:\n%s', pretty_print(prepared_req))
+                        try:
+                            send_chunk(self.session, prepared_req)
+                        except RetryError:
+                            logger.warning(
+                                'Failed to upload data to luna backend after consecutive retries.\n'
+                                'Dropped data: \n%s', df_grouped_by_id, exc_info=True
+                            )
+                            return
+                    else:
+                        # no public_id yet, put it back
+                        self.client.pending_queue.put(df_grouped_by_id)
 
     def is_finished(self):
         return self._finished

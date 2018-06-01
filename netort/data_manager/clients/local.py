@@ -58,29 +58,35 @@ class LocalStorageClient(AbstractClient):
         )
 
     def put(self, df):
-        metric_local_id = df.index[0]
-        metric = self.job.manager.get_metric_by_id(metric_local_id)
-        if not metric:
-            logger.warning('Received unknown metric id: %s', metric_local_id)
-            return
-        if metric.local_id not in self.file_streams:
-            logger.debug('Creating artifact file for %s', metric.local_id)
-            self.__create_artifact(metric)
-            dtypes = {}
-            for name, type_ in metric.dtypes.items():
-                dtypes[name] = type_.__name__
-            this_metric_meta = {'type': metric.type, 'names': metric.columns, 'dtypes': dtypes, 'meta': metric.meta}
-            self.registered_meta[metric.local_id] = this_metric_meta
-            artifact_file_header = json.dumps(this_metric_meta)
-            self.file_streams[metric.local_id].write("%s\n" % artifact_file_header)
-        data = df.to_csv(
-            sep=self.separator,
-            header=False,
-            index=False,
-            columns=metric.columns
-        )
-        self.file_streams[metric.local_id].write(data)
-        self.file_streams[metric.local_id].flush()
+        if df is not None:
+            for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+                metric = self.job.manager.get_metric_by_id(metric_local_id)
+                if not metric:
+                    logger.warning('Received unknown metric id: %s', metric_local_id)
+                    return
+                if metric.local_id not in self.file_streams:
+                    logger.debug('Creating artifact file for %s', metric.local_id)
+                    self.__create_artifact(metric)
+                    dtypes = {}
+                    for name, type_ in metric.dtypes.items():
+                        dtypes[name] = type_.__name__
+                    this_metric_meta = {
+                        'type': metric.type,
+                        'names': metric.columns,
+                        'dtypes': dtypes,
+                        'meta': metric.meta
+                    }
+                    self.registered_meta[metric.local_id] = this_metric_meta
+                    artifact_file_header = json.dumps(this_metric_meta)
+                    self.file_streams[metric.local_id].write("%s\n" % artifact_file_header)
+                data = df_grouped_by_id.to_csv(
+                    sep=self.separator,
+                    header=False,
+                    index=False,
+                    columns=metric.columns
+                )
+                self.file_streams[metric.local_id].write(data)
+                self.file_streams[metric.local_id].flush()
 
     def close(self):
         for file_ in self.file_streams:
