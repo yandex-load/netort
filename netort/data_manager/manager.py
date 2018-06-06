@@ -24,7 +24,7 @@ class DataSession(object):
         self.operator = self.__get_operator()
         self.job_id = "job_{uuid}".format(uuid=uuid.uuid4())
         logger.info('Created new local data session: %s', self.job_id)
-        self.test_start = config.get('test_start', int(time.time()*10000000))
+        self.test_start = config.get('test_start', int(time.time() * 10**6))
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
         self._artifacts_dir = None
         self.manager = DataManager()
@@ -55,6 +55,26 @@ class DataSession(object):
 
     def get_metric_by_id(self, id_):
         return self.manager.get_metric_by_id(id_)
+
+    def update_job(self, meta):
+        for client in self.clients:
+            try:
+                client.update_job(meta)
+            except Exception:
+                logger.warn('Client %s job update failed', client)
+                logger.debug('Client %s job update failed', client, exc_info=True)
+            else:
+                logger.debug('Client job updated: %s', client)
+
+    def update_metric(self, meta):
+        for client in self.clients:
+            try:
+                client.update_metric(meta)
+            except Exception:
+                logger.warn('Client %s metric update failed', client)
+                logger.debug('Client %s metric update failed', client, exc_info=True)
+            else:
+                logger.debug('Client metric updated: %s', client)
 
     @property
     def artifacts_dir(self):

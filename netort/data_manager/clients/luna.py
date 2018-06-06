@@ -27,31 +27,24 @@ RETRY_ARGS = dict(
 
 @retry(**RETRY_ARGS)
 def send_chunk(session, req, timeout=5):
-    try:
-        r = session.send(req, verify=False, timeout=timeout)
-    except requests.ConnectionError:
-        logger.warning('Connection error: %s', exc_info=True)
-        raise
-    except requests.HTTPError:
-        logger.warning('Http error: %s', exc_info=True)
-        raise
-    else:
-        logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
-        r.raise_for_status()
-        return r
+    r = session.send(req, verify=False, timeout=timeout)
+    logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
+    r.raise_for_status()
+    return r
 
 
 class LunaClient(AbstractClient):
-    metric_registration = '/create_metric/'
-    metric_update = '/update_metric/'
-    # metric_upload = '/upload_metric/?query='  # production
-    metric_upload = '/?database=luna_test&query='  # testing
-    job_registration = '/create_job/'
-    dbname = 'luna'
+    create_metric_path = '/create_metric/'
+    update_metric_path = '/update_metric/'
+    upload_metric_path = '/upload_metric/?query='  # production
+    create_job_path = '/create_job/'
+    update_job_path = '/update_job/'
+    dbname = 'luna_test'
 
     def __init__(self, meta, job):
         super(LunaClient, self).__init__(meta, job)
         logger.debug('Luna client local id: %s', self.local_id)
+        self.failed = threading.Event()
         self.public_ids = {}
         self.luna_columns = ['key_date', 'tag']
         self.key_date = "{key_date}".format(key_date=datetime.datetime.now().strftime("%Y-%m-%d"))
@@ -69,12 +62,26 @@ class LunaClient(AbstractClient):
 
     @property
     def job_number(self):
+        if self.failed.is_set():
+            return
         if not self._job_number:
-            self._job_number = self.create_job()
-            self.__test_id_link_to_jobno()
-            return self._job_number
+            try:
+                self._job_number = self.create_job()
+                self.__test_id_link_to_jobno()
+            except RetryError:
+                logger.debug('Failed to create lunapark volta job', exc_info=True)
+                logger.warning('Failed to create lunapark volta job')
+                self.failed.set()
+            else:
+                return self._job_number
         else:
             return self._job_number
+
+    def put(self, df):
+        if not self.failed.is_set():
+            self.pending_queue.put(df)
+        else:
+            logger.debug('Skipped incoming data chunk due to failures')
 
     def create_job(self):
         """ Create public Luna job
@@ -89,8 +96,6 @@ class LunaClient(AbstractClient):
             my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
-                # not json handler anymore
-                # "Content-Type": "application/json",
                 "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
                     upward_ua=self.meta.get('user_agent', ''),
                     uploader_ua=my_user_agent
@@ -100,7 +105,7 @@ class LunaClient(AbstractClient):
             'POST',
             "{api_address}{path}".format(
                 api_address=self.api_address,
-                path=self.job_registration
+                path=self.create_job_path
             ),
             headers=headers
         )
@@ -110,20 +115,52 @@ class LunaClient(AbstractClient):
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
 
-        try:
-            response = send_chunk(self.session, prepared_req)
-        except RetryError:
-            logger.warning('Failed to create luna job', exc_info=True)
-            raise
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Luna create job status: %s', response.status_code)
+        logger.debug('Answ data: %s', response.content)
+        job_id = response.content
+        if not job_id:
+            self.failed.set()
+            raise ValueError('Luna returned answer without jobid: %s', response.content)
         else:
-            logger.debug('Luna create job status: %s', response.status_code)
+            logger.info('Luna job created: %s', job_id)
+            return job_id
+
+    def update_job(self, meta):
+        req = requests.Request(
+            'POST',
+            "{api_address}{path}?job={job}".format(
+                api_address=self.api_address,
+                path=self.update_job_path,
+                job=self._job_number
+            ),
+        )
+        req.data = meta
+        prepared_req = req.prepare()
+        logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Update job status: %s', response.status_code)
+        logger.debug('Answ data: %s', response.content)
+
+    def update_metric(self, meta):
+        for metric_tag, metric_obj in self.job.manager.metrics.items():
+            if not metric_obj.tag:
+                logger.debug('Metric %s has no public tag, skipped updating metric', metric_tag)
+                continue
+            req = requests.Request(
+                'POST',
+                "{api_address}{path}?tag={tag}".format(
+                    api_address=self.api_address,
+                    path=self.update_metric_path,
+                    tag=metric_obj.tag
+                ),
+            )
+            req.data = meta
+            prepared_req = req.prepare()
+            logger.debug('Prepared update_metric request:\n%s', pretty_print(prepared_req))
+            response = send_chunk(self.session, prepared_req)
+            logger.debug('Update metric status: %s', response.status_code)
             logger.debug('Answ data: %s', response.content)
-            job_id = response.content
-            if not job_id:
-                raise ValueError('Luna returned answer without jobid: %s', response.content)
-            else:
-                logger.info('Luna job created: %s', job_id)
-                return job_id
 
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
@@ -168,9 +205,12 @@ class RegisterWorkerThread(threading.Thread):
                     for id_ in ids.index:
                         if id_ not in self.client.public_ids.keys():
                             metric = self.client.job.manager.get_metric_by_id(id_)
-                            tag = self.register_metric(metric)
-                            logger.debug('Successfully received tag %s for metric.local_id: %s', tag, metric.local_id)
-                            self.client.public_ids[metric.local_id] = tag
+                            metric.tag = self.register_metric(metric)
+                            logger.debug(
+                                'Successfully received tag %s for metric.local_id: %s',
+                                metric.tag, metric.local_id
+                            )
+                            self.client.public_ids[metric.local_id] = metric.tag
             time.sleep(1)
         logger.info('Metric registration thread interrupted!')
         self._finished.set()
@@ -180,7 +220,7 @@ class RegisterWorkerThread(threading.Thread):
             'POST',
             "{api_address}{path}".format(
                 api_address=self.client.api_address,
-                path=self.client.metric_registration
+                path=self.client.create_metric_path
             )
             # not json handler anymore
             # headers = {"Content-Type": "application/json"}
@@ -196,7 +236,7 @@ class RegisterWorkerThread(threading.Thread):
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
         if not response.content:
-            raise RuntimeError('Luna not returned uniq_id for metric registration: %s', response.content)
+            logger.debug('Luna not returned uniq_id for metric registration: %s', response.content)
         else:
             return response.content
 
@@ -250,28 +290,24 @@ class WorkerThread(threading.Thread):
                         )
                         req = requests.Request(
                             'POST', "{api}{data_upload_handler}{query}".format(
-                                #api='http://sas1-7845-sas-volta-clickhouse-te-ec2-24835.gencfg-c.yandex.net:24835',
-                                api='https://vla-kvh4wvcc4lk0uj0s.db.yandex.net:8443', # testing
-                                #api=self.client.api_address, # production proxy
-                                data_upload_handler=self.client.metric_upload,
+                                api=self.client.api_address, # production proxy
+                                data_upload_handler=self.client.upload_metric_path,
                                 query="INSERT INTO {table} FORMAT TSV".format(
-                                    #table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
-                                    table="{type}".format(db=self.client.dbname, type=metric.type) # testing
+                                    table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
                                 )
                             )
                         )
-                        # only for testing purpose below
                         req.headers = {
                             'X-ClickHouse-User': 'lunapark',
                             'X-ClickHouse-Key': 'lunapark'
                         }
                         req.data = body
                         prepared_req = req.prepare()
-                        # logger.debug('Prepared upload request:\n%s', pretty_print(prepared_req))
                         try:
                             send_chunk(self.session, prepared_req)
                         except RetryError:
-                            logger.warning(
+                            logger.warning('Failed to upload data to luna. Dropped some data.')
+                            logger.debug(
                                 'Failed to upload data to luna backend after consecutive retries.\n'
                                 'Dropped data: \n%s', df_grouped_by_id, exc_info=True
                             )

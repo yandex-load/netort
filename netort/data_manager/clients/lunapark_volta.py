@@ -12,8 +12,6 @@ from retrying import retry, RetryError
 from ..common.interfaces import AbstractClient
 from ..common.util import pretty_print
 
-from netort.data_processing import get_nowait_from_queue
-
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -30,23 +28,16 @@ RETRY_ARGS = dict(
 
 @retry(**RETRY_ARGS)
 def send_chunk(session, req, timeout=5):
-    try:
-        r = session.send(req, verify=False, timeout=timeout)
-    except requests.ConnectionError:
-        logger.warning('Connection error: %s', exc_info=True)
-        raise
-    except requests.HTTPError:
-        logger.warning('Http error: %s', exc_info=True)
-        raise
-    else:
-        logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
-        r.raise_for_status()
-        return r
+    r = session.send(req, verify=False, timeout=timeout)
+    logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
+    r.raise_for_status()
+    return r
 
 
 class LunaparkVoltaClient(AbstractClient):
-    create_job_url = '/mobile/create_job.json'
-    update_job_url = '/mobile/update_job.json'
+    create_job_path = '/mobile/create_job.json'
+    update_job_path = '/mobile/update_job.json'
+    metric_update = '' # FIXME
     metric_upload = '/api/volta/?query='
     dbname = 'volta'
     data_types_to_tables = {
@@ -68,6 +59,7 @@ class LunaparkVoltaClient(AbstractClient):
 
     def __init__(self, meta, job):
         super(LunaparkVoltaClient, self).__init__(meta, job)
+        self.failed = threading.Event()
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
         else:
@@ -83,10 +75,18 @@ class LunaparkVoltaClient(AbstractClient):
 
     @property
     def job_number(self):
+        if self.failed.is_set():
+            return
         if not self._job_number:
-            self._job_number = self.create_job()
-            self.__test_id_link_to_jobno()
-            return self._job_number
+            try:
+                self._job_number = self.create_job()
+                self.__test_id_link_to_jobno()
+            except RetryError:
+                logger.debug('Failed to create lunapark volta job', exc_info=True)
+                logger.warning('Failed to create lunapark volta job')
+                self.failed.set()
+            else:
+                return self._job_number
         else:
             return self._job_number
 
@@ -108,7 +108,10 @@ class LunaparkVoltaClient(AbstractClient):
             logger.debug('Symlink created for job: %s', self.job.job_id)
 
     def put(self, df):
-        self.pending_queue.put(df)
+        if not self.failed.is_set():
+            self.pending_queue.put(df)
+        else:
+            logger.debug('Skipped incoming data chunk due to failures')
 
     def create_job(self):
         my_user_agent = None
@@ -118,7 +121,6 @@ class LunaparkVoltaClient(AbstractClient):
             my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
-                #"Content-Type": "application/json",
                 "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
                     upward_ua=self.meta.get('user_agent', ''),
                     uploader_ua=my_user_agent
@@ -128,7 +130,7 @@ class LunaparkVoltaClient(AbstractClient):
             'POST',
             "{api_address}{path}".format(
                 api_address=self.api_address,
-                path=self.create_job_url
+                path=self.create_job_path
             ),
             headers=headers
         )
@@ -144,21 +146,35 @@ class LunaparkVoltaClient(AbstractClient):
         prepared_req = req.prepare()
         logger.debug('Prepared lunapark_volta create_job request:\n%s', pretty_print(prepared_req))
 
-        try:
-            response = send_chunk(self.session, prepared_req)
-        except RetryError:
-            logger.warning('Failed to create volta lunapark job', exc_info=True)
-            raise
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Lunapark volta create job status: %s', response.status_code)
+        logger.debug('Answ data: %s', response.json())
+        job_id = response.json().get('jobno')
+        if not job_id:
+            logger.warning('Create job answ data: %s', response.json())
+            self.failed.set()
+            raise ValueError('Lunapark volta returned answer without jobno: %s', response.json())
         else:
-            logger.debug('Lunapark volta create job status: %s', response.status_code)
-            logger.debug('Answ data: %s', response.json())
-            job_id = response.json().get('jobno')
-            if not job_id:
-                logger.warning('Create job answ data: %s', response.json())
-                raise ValueError('Lunapark volta returned answer without jobno: %s', response.json())
-            else:
-                logger.info('Lunapark volta job created: %s', job_id)
-                return job_id
+            logger.info('Lunapark volta job created: %s', job_id)
+            return job_id
+
+    def update_job(self, meta):
+        req = requests.Request(
+            'POST',
+            "{api_address}{path}?test_id={id}".format(
+                api_address=self.api_address,
+                path=self.update_job_path,
+                id=self._job_number
+            ),
+        )
+        req.data = meta
+        req.data['test_start'] = self.job.test_start
+        req.data['test_id'] = self._job_number
+        prepared_req = req.prepare()
+        logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Update job status: %s', response.status_code)
+        logger.debug('Answ data: %s', response.content)
 
     def get_info(self):
         """ mock """
@@ -212,7 +228,6 @@ class WorkerThread(threading.Thread):
                             metric_type = 'unknown'
                     else:
                         metric_type = 'current'
-                    # logger.info('Df: %s', df_grouped_by_id)
                     body = df_grouped_by_id.to_csv(
                         sep='\t',
                         header=False,
@@ -235,14 +250,14 @@ class WorkerThread(threading.Thread):
                     )
                     req.data = body
                     prepared_req = req.prepare()
-                    if metric.type == 'events':
-                        logger.debug('Prepared upload request:\n%s', pretty_print(prepared_req))
                     try:
                         send_chunk(self.session, prepared_req)
                     except RetryError:
                         logger.warning(
-                            'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data: \n%s', df_grouped_by_id, exc_info=True
+                            'Failed to upload data to lunapark backend. Dropped some data.'
+                        )
+                        logger.debug(
+                            'Failed to upload data to luna, dropped data: %s', df_grouped_by_id, exc_info=True
                         )
                         return
 
