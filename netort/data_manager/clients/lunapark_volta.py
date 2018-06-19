@@ -40,6 +40,7 @@ class LunaparkVoltaClient(AbstractClient):
     metric_update = '' # FIXME
     metric_upload = '/api/volta/?query='
     dbname = 'volta'
+    symlink_artifacts_path = 'lunapark_volta'
     data_types_to_tables = {
         'current': 'currents',
         'syncs': 'syncs',
@@ -92,7 +93,10 @@ class LunaparkVoltaClient(AbstractClient):
 
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
-        link_dir = os.path.join(self.job.artifacts_base_dir, 'lunapark_volta')
+        link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
+        if not self._job_number:
+            logger.info('Public test id not available, skipped symlink creation for %s', self.symlink_artifacts_path)
+            return
         if not os.path.exists(link_dir):
             os.makedirs(link_dir)
         try:
@@ -103,9 +107,14 @@ class LunaparkVoltaClient(AbstractClient):
                 os.path.join(link_dir, str(self.job_number))
             )
         except OSError:
-            logger.warning('Unable to create symlink for test: %s', self.job.job_id)
+            logger.warning(
+                'Unable to create %s/%s symlink for test: %s',
+                self.symlink_artifacts_path, self.job_number, self.job.job_id
+            )
         else:
-            logger.debug('Symlink created for job: %s', self.job.job_id)
+            logger.debug(
+                'Symlink %s/%s created for job: %s', self.symlink_artifacts_path, self.job_number, self.job.job_id
+            )
 
     def put(self, df):
         if not self.failed.is_set():
@@ -161,15 +170,21 @@ class LunaparkVoltaClient(AbstractClient):
     def update_job(self, meta):
         req = requests.Request(
             'POST',
-            "{api_address}{path}?test_id={id}".format(
+            "{api_address}{path}".format(
                 api_address=self.api_address,
-                path=self.update_job_path,
-                id=self._job_number
+                path=self.update_job_path
             ),
         )
         req.data = meta
         req.data['test_start'] = self.job.test_start
-        req.data['test_id'] = self._job_number
+        req.data['test_id'] = "{key_date}_{local_job_id}".format(
+            key_date=self.key_date,
+            local_job_id=self.job.job_id
+        ),
+        if req.data.get('offset'):
+            req.data['sys_uts_offset'] = req.data['offset']
+        if req.data.get('log_offset'):
+            req.data['log_uts_offset'] = req.data['log_offset']
         prepared_req = req.prepare()
         logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
@@ -208,58 +223,70 @@ class WorkerThread(threading.Thread):
         self._finished.set()
 
     def __process_pending_queue(self):
+        exec_time_start = time.time()
         try:
-            df = self.client.pending_queue.get_nowait()
+            incoming_df = self.client.pending_queue.get_nowait()
+            df = incoming_df.copy()
         except queue.Empty:
-            time.sleep(0.5)
+            time.sleep(1)
         else:
-            if df is not None:
-                for metric_local_id, df_grouped_by_id in df.groupby(level=0):
-                    df_grouped_by_id['key_date'] = self.client.key_date
-                    df_grouped_by_id['test_id'] = "{key_date}_{local_job_id}".format(
-                        key_date=self.client.key_date,
-                        local_job_id=self.client.job.job_id
-                    )
-                    metric = self.client.job.manager.get_metric_by_id(metric_local_id)
-                    if metric.type == 'events':
-                        try:
-                            metric_type = df_grouped_by_id['custom_metric_type'][0]
-                        except KeyError:
-                            metric_type = 'unknown'
-                    else:
-                        metric_type = 'current'
-                    body = df_grouped_by_id.to_csv(
-                        sep='\t',
-                        header=False,
-                        index=False,
-                        na_rep="",
-                        columns=self.client.clickhouse_cols + self.client.clickhouse_output_fmt[metric_type]
-                    )
-
-                    req = requests.Request(
-                        'POST', "{api}{data_upload_handler}{query}".format(
-                            api=self.client.api_address,
-                            data_upload_handler=self.client.metric_upload,
-                            query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(
-                                    db=self.client.dbname,
-                                    type=self.client.data_types_to_tables[metric_type]
-                                )
-                            )
-                        )
-                    )
-                    req.data = body
-                    prepared_req = req.prepare()
+            for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+                df_grouped_by_id['key_date'] = self.client.key_date
+                df_grouped_by_id['test_id'] = "{key_date}_{local_job_id}".format(
+                    key_date=self.client.key_date,
+                    local_job_id=self.client.job.job_id
+                )
+                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+                if metric.type == 'events':
                     try:
-                        send_chunk(self.session, prepared_req)
-                    except RetryError:
-                        logger.warning(
-                            'Failed to upload data to lunapark backend. Dropped some data.'
-                        )
-                        logger.debug(
-                            'Failed to upload data to luna, dropped data: %s', df_grouped_by_id, exc_info=True
-                        )
-                        return
+                        gb = df_grouped_by_id.groupby('custom_metric_type')
+                    except KeyError:
+                        self.__send_this_type(df_grouped_by_id, 'unknown')
+                    else:
+                        for gb_name, gb_frame in gb:
+                            # FIXME crunch
+                            if gb_name == 'sync':
+                                gb_name = 'syncs'
+                            self.__send_this_type(gb_frame, gb_name)
+                else:
+                    self.__send_this_type(df_grouped_by_id, 'current')
+        logger.debug('Lunapark volta client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
+
+    def __send_this_type(self, df, metric_type):
+        try:
+            body = df.to_csv(
+                sep='\t',
+                header=False,
+                index=False,
+                na_rep="",
+                columns=self.client.clickhouse_cols + self.client.clickhouse_output_fmt[metric_type]
+            )
+        except Exception:
+            logger.info('Exc: %s', exc_info=True)
+        req = requests.Request(
+            'POST', "{api}{data_upload_handler}{query}".format(
+                api=self.client.api_address,
+                data_upload_handler=self.client.metric_upload,
+                query="INSERT INTO {table} FORMAT TSV".format(
+                    table="{db}.{type}".format(
+                        db=self.client.dbname,
+                        type=self.client.data_types_to_tables[metric_type]
+                    )
+                )
+            )
+        )
+        req.data = body
+        prepared_req = req.prepare()
+        try:
+            send_chunk(self.session, prepared_req)
+        except RetryError:
+            logger.warning(
+                'Failed to upload data to lunapark backend. Dropped some data.'
+            )
+            logger.debug(
+                'Failed to upload data to luna, dropped data: %s', df, exc_info=True
+            )
+            return
 
     def is_finished(self):
         return self._finished

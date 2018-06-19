@@ -22,7 +22,7 @@ class DataSession(object):
     def __init__(self,  config):
         self.config = config
         self.operator = self.__get_operator()
-        self.job_id = "job_{uuid}".format(uuid=uuid.uuid4())
+        self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))
         logger.info('Created new local data session: %s', self.job_id)
         self.test_start = config.get('test_start', int(time.time() * 10**6))
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
@@ -200,7 +200,7 @@ class DataManager(object):
             logger.debug('Found metrics for this subscriber, subscribing...: %s', this_subscriber_metrics)
             # attach this sub callback to discovered metrics and select id <-> callbacks
             this_subscriber_metrics['callback'] = callback
-            prepared_callbacks = this_subscriber_metrics[['id', 'callback']].set_index('id')
+            prepared_callbacks = this_subscriber_metrics[['callback']]
             # add this subscriber callbacks to DataManager's callbacks
             self.callbacks = self.callbacks.append(prepared_callbacks)
 

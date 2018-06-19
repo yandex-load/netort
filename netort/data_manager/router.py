@@ -25,6 +25,7 @@ class MetricsRouter(threading.Thread):
 
     def run(self):
         while not self._interrupted.is_set():
+            exec_time_start = time.time()
             self.routing_buffer = {}
             data = get_nowait_from_queue(self.source)
             for df, type_ in data:
@@ -50,10 +51,13 @@ class MetricsRouter(threading.Thread):
                         left_index=True,
                         right_index=True
                     ).groupby('callback'):
+                        # exec_time_start = time.time()
                         callback(incoming_chunks)
+                        # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
                 except TypeError:
                     logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
                                  type_, self.routing_buffer[type_], exc_info=True)
+            logger.debug('Routing cycle took %.2f ms', (time.time() - exec_time_start) * 1000)
             if self._interrupted.is_set():
                 break
             time.sleep(1)
