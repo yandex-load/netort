@@ -199,9 +199,8 @@ class LunaparkVoltaClient(AbstractClient):
         self.worker.stop()
         while not self.worker.is_finished():
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
-        logger.debug('Joining uploader thread...')
+        logger.debug('Joining lunapark_volta metric uploader thread...')
         self.worker.join()
-        logger.info('Uploader finished!')
 
 
 class WorkerThread(threading.Thread):
@@ -248,8 +247,11 @@ class WorkerThread(threading.Thread):
                             if gb_name == 'sync':
                                 gb_name = 'syncs'
                             self.__send_this_type(gb_frame, gb_name)
-                else:
+                elif metric.type == 'metrics' and metric.meta.get('name') == 'current':
                     self.__send_this_type(df_grouped_by_id, 'current')
+                else:
+                    logger.debug('Dropped data of type %s, %s probably monitoring or other user custom metrics...',
+                                 metric.type, metric.meta.get('name'))
         logger.debug('Lunapark volta client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
 
     def __send_this_type(self, df, metric_type):

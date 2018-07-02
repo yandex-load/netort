@@ -96,7 +96,12 @@ class DataSession(object):
             raise
 
     def close(self):
-        logger.info('DataSession received close signal. Sending close signal to clients...')
+        logger.info('DataSession received close signal.')
+        logger.info('Closing DataManager')
+        self.manager.close()
+        logger.info('Waiting the rest of data from router...')
+        self.manager.router.join()
+        logger.info('Sending close to DataSession clients...')
         for client in self.clients:
             try:
                 client.close()
@@ -104,8 +109,7 @@ class DataSession(object):
                 logger.warn('Client %s failed to close', client)
             else:
                 logger.debug('Client closed: %s', client)
-        logger.info('Closing manager...')
-        self.manager.close()
+        logger.info('DataSession finished!')
 
 
 class DataManager(object):

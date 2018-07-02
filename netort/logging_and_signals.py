@@ -43,7 +43,7 @@ def init_logging(log_filename, verbose, quiet):
         "%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
     )
     fmt_regular = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S")
+        "%(asctime)s [%(levelname).4s] [%(filename).8s] %(message)s", "%H:%M:%S")
 
     if verbose:
         console_handler.setLevel(logging.DEBUG)

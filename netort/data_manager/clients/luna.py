@@ -39,7 +39,7 @@ class LunaClient(AbstractClient):
     upload_metric_path = '/upload_metric/?query='  # production
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
-    dbname = 'luna_test'
+    dbname = 'luna'
     symlink_artifacts_path = 'luna'
 
     def __init__(self, meta, job):
@@ -191,9 +191,12 @@ class LunaClient(AbstractClient):
 
     def close(self):
         self.register_worker.stop()
+        logger.info('Joining luna client metric registration thread...')
         self.register_worker.join()
         self.worker.stop()
-        logger.info('Joining luna client processing thread...')
+        while not self.worker.is_finished():
+            logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
+        logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
         # FIXME testing
         logger.info('Luna job url: %s/tests/%s', 'https://volta-testing.common-int.yandex-team.ru', self.job_number)
@@ -272,10 +275,11 @@ class WorkerThread(threading.Thread):
     def run(self):
         while not self._interrupted.is_set():
             self.__process_pending_queue()
-        logger.info('Luna uploader thread main loop interrupted, '
-                    'finishing work and trying to send the rest of data, qsize: %s',
-                    self.client.pending_queue.qsize())
-        self.__process_pending_queue()
+        logger.info(
+            'Luna uploader finishing work and '
+            'trying to send the rest of data, qsize: %s', self.client.pending_queue.qsize())
+        while self.client.pending_queue.qsize() > 1:
+            self.__process_pending_queue()
         self._finished.set()
 
     def __process_pending_queue(self):
@@ -334,5 +338,5 @@ class WorkerThread(threading.Thread):
         return self._finished
 
     def stop(self):
-        logger.info('Uploader got interrupt signal')
+        logger.info('Luna uploader got interrupt signal')
         self._interrupted.set()
