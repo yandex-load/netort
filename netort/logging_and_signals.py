@@ -31,8 +31,7 @@ def init_logging(log_filename, verbose, quiet):
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(
             logging.Formatter(
-                fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s",
-                datefmt='%Y-%m-%d,%H:%M:%S.%f'
+                fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
             ))
         logger.addHandler(file_handler)
 
