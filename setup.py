@@ -20,7 +20,7 @@ common library for yandex-load org
     tests_require=[
         # 'pytest',
     ],
-    license='LGPLv2',
+    license='MPLv2',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
