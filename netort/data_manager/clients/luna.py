@@ -198,8 +198,9 @@ class LunaClient(AbstractClient):
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
-        # FIXME testing
-        logger.info('Luna job url: %s/tests/%s', 'https://volta-testing.common-int.yandex-team.ru', self.job_number)
+        # FIXME hardcored host
+        # FIXME we dont know front hostname, because api address now is clickhouse address
+        logger.info('Luna job url: %s/tests/%s', 'https://volta.yandex-team.ru', self.job_number)
         logger.info('Luna client done its work')
 
 
