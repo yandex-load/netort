@@ -144,24 +144,38 @@ class FileOpener(object):
         return os.path.getsize(self.f_path)
 
 
+def retry(func):
+    def with_retry(self, *args, **kwargs):
+        for i in range(self.attempts):
+            try:
+                return func(self, *args, **kwargs)
+            except:
+                print('{} failed. Retrying.'.format(func))
+                continue
+        return func(self, *args, **kwargs)
+    return with_retry
+
+
 class HttpOpener(object):
     """ Http url opener.
         Downloads small files.
         For large files returns wrapped http stream.
     """
 
-    def __init__(self, url, timeout=10):
+    def __init__(self, url, timeout=10, attempts=42):
         self._filename = None
         self.url = url
         self.fmt_detector = FormatDetector()
         self.force_download = None
         self.data_info = None
         self.timeout = timeout
+        self.attempts = attempts
         self.get_request_info()
 
     def __call__(self, use_cache=True, *args, **kwargs):
         return self.open(use_cache, *args, **kwargs)
 
+    @retry
     def open(self, use_cache, *args, **kwargs):
         with closing(
                 requests.get(
@@ -183,6 +197,7 @@ class HttpOpener(object):
             else:
                 return open(downloaded_f_path, 'rb')
 
+    @retry
     def download_file(self, use_cache):
         tmpfile_path = self.tmpfile_path()
         if os.path.exists(tmpfile_path) and use_cache:
@@ -210,6 +225,7 @@ class HttpOpener(object):
         hasher.update(self.hash)
         return "/tmp/%s.downloaded_resource" % hasher.hexdigest()
 
+    @retry
     def get_request_info(self):
         logger.debug('Trying to get info about resource %s', self.url)
         req = requests.Request(
