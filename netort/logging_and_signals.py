@@ -31,7 +31,7 @@ def init_logging(log_filename, verbose, quiet):
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
+                fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
             ))
         logger.addHandler(file_handler)
 
@@ -40,10 +40,11 @@ def init_logging(log_filename, verbose, quiet):
     stderr_hdl = logging.StreamHandler(sys.stderr)
 
     fmt_verbose = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
+        fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s",
+        datefmt='%Y-%m-%d,%H:%M:%S.%f'
     )
     fmt_regular = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S")
+        "%(asctime)s [%(levelname).4s] [%(filename).8s] %(message)s", "%H:%M:%S")
 
     if verbose:
         console_handler.setLevel(logging.DEBUG)

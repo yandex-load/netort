@@ -1,1 +1,1 @@
-from .manager import DataManager  # noqa:F401
+from manager import *

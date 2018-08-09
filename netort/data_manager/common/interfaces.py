@@ -16,6 +16,12 @@ class AbstractClient(object):
     def put(self, df):
         self.pending_queue.put(df)
 
+    def update_job(self, meta):
+        pass
+
+    def update_metric(self, meta):
+        pass
+
 
 class AbstractMetric(object):
     def __init__(self, meta, queue_):
@@ -24,6 +30,7 @@ class AbstractMetric(object):
         self.meta = meta
         self.routing_queue = queue_
         self.columns = []
+        self.tag = None
 
     @property
     def type(self):

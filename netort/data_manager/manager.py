@@ -21,10 +21,10 @@ class DataSession(object):
     """
     def __init__(self,  config):
         self.config = config
-        self.operator = config.get('operator', pwd.getpwuid(os.geteuid())[0])
-        self.job_id = "job_{uuid}".format(uuid=uuid.uuid4())
+        self.operator = self.__get_operator()
+        self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))
         logger.info('Created new local data session: %s', self.job_id)
-        self.test_start = config.get('test_start', time.time())
+        self.test_start = config.get('test_start', int(time.time() * 10**6))
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
         self._artifacts_dir = None
         self.manager = DataManager()
@@ -42,10 +42,39 @@ class DataSession(object):
                 raise ValueError('Client type should be defined.')
             if type_ in available_clients:
                 client = available_clients[type_](client_meta, self)
-                self.manager.subscribe(client.put, filter_)
+                self.subscribe(client.put, filter_)
                 self.clients.append(client)
             else:
                 raise NotImplementedError('Unknown client type: %s' % type_)
+
+    def new_metric(self, meta):
+        return self.manager.new_metric(meta)
+
+    def subscribe(self, callback, filter_):
+        return self.manager.subscribe(callback, filter_)
+
+    def get_metric_by_id(self, id_):
+        return self.manager.get_metric_by_id(id_)
+
+    def update_job(self, meta):
+        for client in self.clients:
+            try:
+                client.update_job(meta)
+            except Exception:
+                logger.warn('Client %s job update failed', client)
+                logger.debug('Client %s job update failed', client, exc_info=True)
+            else:
+                logger.debug('Client job updated: %s', client)
+
+    def update_metric(self, meta):
+        for client in self.clients:
+            try:
+                client.update_metric(meta)
+            except Exception:
+                logger.warn('Client %s metric update failed', client)
+                logger.debug('Client %s metric update failed', client, exc_info=True)
+            else:
+                logger.debug('Client metric updated: %s', client)
 
     @property
     def artifacts_dir(self):
@@ -57,13 +86,30 @@ class DataSession(object):
             self._artifacts_dir = os.path.abspath(dir_name)
         return self._artifacts_dir
 
+    def __get_operator(self):
+        try:
+            return self.config.get('operator') or pwd.getpwuid(os.geteuid())[0]
+        except:  # noqa: E722
+            logger.error(
+                "Couldn't get username from the OS. Please, set the 'operator' option explicitly in your config "
+                "file.")
+            raise
+
     def close(self):
+        logger.info('DataSession received close signal.')
+        logger.info('Closing DataManager')
+        self.manager.close()
+        logger.info('Waiting the rest of data from router...')
+        self.manager.router.join()
+        logger.info('Sending close to DataSession clients...')
         for client in self.clients:
             try:
                 client.close()
             except Exception:
                 logger.warn('Client %s failed to close', client)
-        self.manager.close()
+            else:
+                logger.debug('Client closed: %s', client)
+        logger.info('DataSession finished!')
 
 
 class DataManager(object):
@@ -96,7 +142,7 @@ class DataManager(object):
             meta (dict): key-value meta information about metric. 'type' required.
 
         Return:
-            metric (object): one of Metric
+            metric (available_metrics[0]): one of Metric
 
         meta sample:
             {
@@ -158,7 +204,7 @@ class DataManager(object):
             logger.debug('Found metrics for this subscriber, subscribing...: %s', this_subscriber_metrics)
             # attach this sub callback to discovered metrics and select id <-> callbacks
             this_subscriber_metrics['callback'] = callback
-            prepared_callbacks = this_subscriber_metrics[['id', 'callback']].set_index('id')
+            prepared_callbacks = this_subscriber_metrics[['callback']]
             # add this subscriber callbacks to DataManager's callbacks
             self.callbacks = self.callbacks.append(prepared_callbacks)
 
@@ -215,7 +261,6 @@ def usage_sample():
     import time
     import pandas as pd
     config = {
-        'operator': 'netort',
         'clients': [
             {
                 'type': 'luna',
@@ -238,7 +283,7 @@ def usage_sample():
         'some_meta_key': 'some_meta_value'
     }
 
-    metric_obj = data_session.manager.new_metric(metric_meta)
+    metric_obj = data_session.new_metric(metric_meta)
     time.sleep(1)
     df = pd.DataFrame([[123, 123.123, "trash"]], columns=['ts', 'value', 'trash'])
     metric_obj.put(df)

@@ -4,6 +4,7 @@ import pkg_resources
 import logging
 
 from cerberus import Validator
+from netort.data_manager.common.util import recursive_dict_update
 
 
 logger = logging.getLogger(__name__)
@@ -36,27 +37,41 @@ def load_schema(directory):
 class ValidatedConfig(object):
     def __init__(
             self,
-            config,
+            configs,
             dynamic_options,
             package_schema_path,
             package_schema_file='config/schema.yaml',
             with_dynamic_options=True,
             core_section='core'
     ):
+        if not isinstance(configs, list):
+            configs = [configs]
+        self.__raw_config_dict = self.__load_multiple(
+            [config for config in configs if config is not None])
+        if self.__raw_config_dict.get(core_section) is None:
+            self.__raw_config_dict[core_section] = {}
         self.BASE_SCHEMA = load_yaml_schema(
             pkg_resources.resource_filename(
                 package_schema_path, package_schema_file
             )
         )
         self.DYNAMIC_OPTIONS = dynamic_options
+        self.CORE_SECTION = core_section
         self._validated = None
-        self.META_LOCATION = core_section
-        try:
-            config[self.META_LOCATION]
-        except (NameError, KeyError):
-            config[self.META_LOCATION] = {}
-        self.__raw_config_dict = config
         self.with_dynamic_options = with_dynamic_options
+        logger.debug('patched_raw_config_dict: %s', self.__raw_config_dict)
+
+    def __load_multiple(self, configs):
+        configs_count = len(configs)
+        if configs_count == 0:
+            return {}
+        elif configs_count == 1:
+            return configs[0]
+        elif configs_count == 2:
+            return recursive_dict_update(configs[0], configs[1])
+        else:
+            return self.__load_multiple(
+                [recursive_dict_update(configs[0], configs[1])] + configs[2:])
 
     def get_option(self, section, option, default=None):
         try:
@@ -104,6 +119,6 @@ class ValidatedConfig(object):
 
     def __set_core_dynamic_options(self, config):
         for option, setter in self.DYNAMIC_OPTIONS.items():
-            config[self.META_LOCATION][option] = setter()
+            config[self.CORE_SECTION][option] = setter()
         return config
 
