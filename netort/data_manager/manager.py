@@ -61,7 +61,7 @@ class DataSession(object):
             try:
                 client.update_job(meta)
             except Exception:
-                logger.warn('Client %s job update failed', client)
+                logger.warning('Client %s job update failed', client)
                 logger.debug('Client %s job update failed', client, exc_info=True)
             else:
                 logger.debug('Client job updated: %s', client)
@@ -71,7 +71,7 @@ class DataSession(object):
             try:
                 client.update_metric(meta)
             except Exception:
-                logger.warn('Client %s metric update failed', client)
+                logger.warning('Client %s metric update failed', client)
                 logger.debug('Client %s metric update failed', client, exc_info=True)
             else:
                 logger.debug('Client metric updated: %s', client)
@@ -106,7 +106,7 @@ class DataSession(object):
             try:
                 client.close()
             except Exception:
-                logger.warn('Client %s failed to close', client)
+                logger.warning('Client %s failed to close', client)
             else:
                 logger.debug('Client closed: %s', client)
         logger.info('DataSession finished!')

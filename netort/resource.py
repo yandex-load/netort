@@ -223,7 +223,7 @@ class HttpOpener(object):
                 allow_redirects=True,
                 timeout=self.timeout)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            logger.warn('Connection error trying to get info for resource %s. Retrying...', self.url, exc_info=True)
+            logger.warning('Connection error trying to get info for resource %s. Retrying...', self.url, exc_info=True)
             try:
                 self.data_info = session.send(
                     prepared,
@@ -246,7 +246,7 @@ class HttpOpener(object):
                 )
                 self.force_download = True
             else:
-                logger.warn('Invalid HTTP response trying to get info about resource: %s', self.url, exc_info=True)
+                logger.warning('Invalid HTTP response trying to get info about resource: %s', self.url, exc_info=True)
                 raise
 
     @property
@@ -285,14 +285,14 @@ class HttpStreamWrapper:
                 self.url, stream=True, verify=False, timeout=10)
             self.stream_iterator = self.stream.iter_content(self.chunk_size)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            logger.warn(
+            logger.warning(
                 'Connection errors or timeout reached trying to create HTTP stream for res: %s', self.url, exc_info=True
             )
             raise
         try:
             self.stream.raise_for_status()
         except requests.exceptions.HTTPError:
-            logger.warn('Invalid HTTP response trying to open stream for resource: %s', self.url, exc_info=True)
+            logger.warning('Invalid HTTP response trying to open stream for resource: %s', self.url, exc_info=True)
             raise
 
     def __enter__(self):
@@ -312,13 +312,13 @@ class HttpStreamWrapper:
                 self.url, stream=True, verify=False, timeout=30)
             self.stream_iterator = self.stream.iter_content(self.chunk_size)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            logger.warn('Connection errors or timeout reached trying to reopen stream while downloading resource: %s',
+            logger.warning('Connection errors or timeout reached trying to reopen stream while downloading resource: %s',
                         self.url, exc_info=True)
             raise
         try:
             self.stream.raise_for_status()
         except requests.exceptions.HTTPError:
-            logger.warn('Invalid HTTP response trying to reopen stream for resource: %s',
+            logger.warning('Invalid HTTP response trying to reopen stream for resource: %s',
                         self.url, exc_info=True)
             raise
         self._content_consumed = False
