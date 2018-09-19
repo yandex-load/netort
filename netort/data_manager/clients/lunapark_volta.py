@@ -37,7 +37,7 @@ def send_chunk(session, req, timeout=5):
 class LunaparkVoltaClient(AbstractClient):
     create_job_path = '/mobile/create_job.json'
     update_job_path = '/mobile/update_job.json'
-    metric_update = '' # FIXME
+    metric_update = ''  # FIXME
     metric_upload = '/api/volta/?query='
     dbname = 'volta'
     symlink_artifacts_path = 'lunapark_volta'
@@ -49,6 +49,17 @@ class LunaparkVoltaClient(AbstractClient):
         'fragments': 'fragments',
         'unknown': 'logentries'
     }
+    # aliases
+    data_types_to_tables.update(
+        {
+            'currents': data_types_to_tables['current'],
+            'sync': data_types_to_tables['syncs'],
+            'event': data_types_to_tables['events'],
+            'metric': data_types_to_tables['metrics'],
+            'fragment': data_types_to_tables['fragments'],
+            'logentries': data_types_to_tables['unknown']
+        }
+    )
     clickhouse_output_fmt = {
         'current': ['ts', 'value'],
         'syncs': ['ts', 'log_uts', 'app', 'tag', 'message'],
@@ -57,6 +68,17 @@ class LunaparkVoltaClient(AbstractClient):
         'fragments': ['ts', 'log_uts', 'app', 'tag', 'message'],
         'unknown': ['ts', 'value']
     }
+    # aliases
+    clickhouse_output_fmt.update(
+        {
+            'currents': clickhouse_output_fmt['current'],
+            'sync': clickhouse_output_fmt['syncs'],
+            'event': clickhouse_output_fmt['events'],
+            'metric': clickhouse_output_fmt['metrics'],
+            'fragment': clickhouse_output_fmt['fragments'],
+            'logentries': clickhouse_output_fmt['unknown']
+        }
+    )
 
     def __init__(self, meta, job):
         super(LunaparkVoltaClient, self).__init__(meta, job)
@@ -64,7 +86,7 @@ class LunaparkVoltaClient(AbstractClient):
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
         else:
-            raise RuntimeError('Api address SHOULD be specified')
+            raise RuntimeError('Api address must be specified')
         self.clickhouse_cols = ['key_date', 'test_id']
         self.task = self.meta.get('task', 'LOAD-272')
         self.session = requests.session()
@@ -243,9 +265,6 @@ class WorkerThread(threading.Thread):
                         self.__send_this_type(df_grouped_by_id, 'unknown')
                     else:
                         for gb_name, gb_frame in gb:
-                            # FIXME crunch
-                            if gb_name == 'sync':
-                                gb_name = 'syncs'
                             self.__send_this_type(gb_frame, gb_name)
                 elif metric.type == 'metrics' and metric.meta.get('name') == 'current':
                     self.__send_this_type(df_grouped_by_id, 'current')
