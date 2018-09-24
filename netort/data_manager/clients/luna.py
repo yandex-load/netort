@@ -157,6 +157,10 @@ class LunaClient(AbstractClient):
                 ),
             )
             req.data = meta
+            if 'sys_uts_offset' in meta.keys() and metric_obj.type == 'metrics':
+                req.data['_offset'] = meta['sys_uts_offset']
+            elif 'log_uts_offset' in meta.keys() and metric_obj.type == 'events':
+                req.data['_offset'] = meta['log_uts_offset']
             prepared_req = req.prepare()
             logger.debug('Prepared update_metric request:\n%s', pretty_print(prepared_req))
             response = send_chunk(self.session, prepared_req)
