@@ -1,9 +1,10 @@
-import queue
 import logging
 import uuid
 import time
 import os
 import pwd
+from Queue import Queue
+
 import pandas as pd
 
 from .clients import available_clients
@@ -129,7 +130,7 @@ class DataManager(object):
         self.metrics_meta = pd.DataFrame(columns=['type'])
         self.subscribers = pd.DataFrame(columns=['type'])
         self.callbacks = pd.DataFrame(columns=['id', 'callback'])
-        self.routing_queue = queue.Queue()
+        self.routing_queue = Queue()
         self.router = MetricsRouter(self)
         self.router.start()
 
