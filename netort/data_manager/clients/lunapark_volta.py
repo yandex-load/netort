@@ -204,9 +204,9 @@ class LunaparkVoltaClient(AbstractClient):
             local_job_id=self.job.job_id
         ),
         if req.data.get('offset'):
-            req.data['sys_uts_offset'] = req.data['offset']
+            req.data['sys_uts_offset'] = req.data['sys_uts_offset']
         if req.data.get('log_offset'):
-            req.data['log_uts_offset'] = req.data['log_offset']
+            req.data['log_uts_offset'] = req.data['log_uts_offset']
         prepared_req = req.prepare()
         logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
