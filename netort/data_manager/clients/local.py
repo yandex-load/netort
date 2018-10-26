@@ -68,7 +68,7 @@ class LocalStorageClient(AbstractClient):
         self.processing_thread.stop()
         logger.info('Joining local client processing thread...')
         self.processing_thread.join()
-        logger.info('Local client finished its work.')
+        logger.info('Local client finished its work. Artifacts are here %s', self.job.artifacts_dir)
 
 
 class ProcessingThread(threading.Thread):
