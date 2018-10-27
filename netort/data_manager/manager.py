@@ -23,7 +23,7 @@ class DataSession(object):
     def __init__(self,  config):
         self.config = config
         self.operator = self.__get_operator()
-        self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))
+        self.job_id = config.get('test_id', f'job_{uuid.uuid4()}')
         logger.info('Created new local data session: %s', self.job_id)
         self.test_start = config.get('test_start', int(time.time() * 10**6))
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
@@ -80,7 +80,7 @@ class DataSession(object):
     @property
     def artifacts_dir(self):
         if not self._artifacts_dir:
-            dir_name = "{dir}/{id}".format(dir=self.artifacts_base_dir, id=self.job_id)
+            dir_name = os.path.join(self.artifacts_base_dir, str(self.job_id))
             if not os.path.isdir(dir_name):
                 os.makedirs(dir_name)
             os.chmod(dir_name, 0o755)
@@ -191,7 +191,7 @@ class DataManager(object):
         filter sample:
             {'type': 'metrics', 'source': 'gun'}
         """
-        sub_id = "subscriber_{uuid}".format(uuid=uuid.uuid4())
+        sub_id = f"subscriber_{uuid.uuid4()}"
         # register subscriber in manager
         sub = pd.DataFrame({sub_id: filter_}).T
         sub['callback'] = callback
@@ -223,9 +223,9 @@ class DataManager(object):
             return filterable
         else:
             for key, value in filter_.items():
-                condition.append('{key} == "{value}"'.format(key=key, value=value))
+                condition.append(f'{key} == "{value}"')
         try:
-            res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
+            res = filterable.query(f" {logic_operation} ".join(condition))
         except pd.computation.ops.UndefinedVariableError:
             return pd.DataFrame()
         else:
@@ -246,9 +246,9 @@ class DataManager(object):
             for existing_col in filterable:
                 for meta_tag, meta_value in filter_.items():
                     if meta_tag == existing_col:
-                        condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
+                        condition.append(f'{meta_tag} == "{meta_value}"')
             try:
-                res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
+                res = filterable.query(f" {logic_operation} ".join(condition))
             except pd.computation.ops.UndefinedVariableError:
                 return pd.DataFrame().append(subscribers_for_any)
             else:

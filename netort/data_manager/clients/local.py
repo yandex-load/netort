@@ -83,7 +83,7 @@ class ProcessingThread(threading.Thread):
     def __create_artifact(self, metric):
         self.file_streams[metric.local_id] = io.open(
             os.path.join(
-                self.client.job.artifacts_dir, "{id}.data".format(id=metric.local_id)
+                self.client.job.artifacts_dir, f"{metric.local_id}.data"
             ),
             mode='wb'
         )

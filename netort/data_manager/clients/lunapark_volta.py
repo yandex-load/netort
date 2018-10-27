@@ -90,7 +90,7 @@ class LunaparkVoltaClient(AbstractClient):
         self.clickhouse_cols = ['key_date', 'test_id']
         self.task = self.meta.get('task', 'LOAD-272')
         self.session = requests.session()
-        self.key_date = "{key_date}".format(key_date=datetime.datetime.now().strftime("%Y-%m-%d"))
+        self.key_date = datetime.datetime.now().strftime("%Y-%m-%d")
         self._job_number = None
         self.worker = WorkerThread(self)
         self.worker.start()
@@ -152,25 +152,16 @@ class LunaparkVoltaClient(AbstractClient):
             my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
-                "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
-                    upward_ua=self.meta.get('user_agent', ''),
-                    uploader_ua=my_user_agent
-                )
+                "User-Agent": f"Uploader/{my_user_agent}, {self.meta.get('user_agent', '')}",
             }
         req = requests.Request(
             'POST',
-            "{api_address}{path}".format(
-                api_address=self.api_address,
-                path=self.create_job_path
-            ),
+            f"{self.api_address}{self.create_job_path}",
             headers=headers
         )
         req.data = {
             'key_date': self.key_date,
-            'test_id': "{key_date}_{local_job_id}".format(
-                key_date=self.key_date,
-                local_job_id=self.job.job_id
-            ),
+            'test_id': f"{self.key_date}_{self.job.job_id}",
             'task': self.task,
             'version': "2"
         }
@@ -199,10 +190,7 @@ class LunaparkVoltaClient(AbstractClient):
         )
         req.data = meta
         req.data['test_start'] = self.job.test_start
-        req.data['test_id'] = "{key_date}_{local_job_id}".format(
-            key_date=self.key_date,
-            local_job_id=self.job.job_id
-        ),
+        req.data['test_id'] = f"{self.key_date}_{self.job.job_id}",
         prepared_req = req.prepare()
         logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
@@ -249,10 +237,7 @@ class WorkerThread(threading.Thread):
         else:
             for metric_local_id, df_grouped_by_id in df.groupby(level=0):
                 df_grouped_by_id['key_date'] = self.client.key_date
-                df_grouped_by_id['test_id'] = "{key_date}_{local_job_id}".format(
-                    key_date=self.client.key_date,
-                    local_job_id=self.client.job.job_id
-                )
+                df_grouped_by_id['test_id'] = f"{self.client.key_date}_{self.client.job.job_id}"
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if metric.type == 'events':
                     try:
@@ -280,17 +265,10 @@ class WorkerThread(threading.Thread):
             )
         except Exception:
             logger.info('Exc: %s', exc_info=True)
+        query = f"INSERT INTO {self.client.dbname}.{self.client.data_types_to_tables[metric_type]} FORMAT TSV"
         req = requests.Request(
-            'POST', "{api}{data_upload_handler}{query}".format(
-                api=self.client.api_address,
-                data_upload_handler=self.client.metric_upload,
-                query="INSERT INTO {table} FORMAT TSV".format(
-                    table="{db}.{type}".format(
-                        db=self.client.dbname,
-                        type=self.client.data_types_to_tables[metric_type]
-                    )
-                )
-            )
+            'POST',
+            f"{self.client.api_address}{self.client.metric_upload}{query}",
         )
         req.data = body
         prepared_req = req.prepare()

@@ -4,7 +4,7 @@ import uuid
 
 class AbstractClient(object):
     def __init__(self, meta, job):
-        self.local_id = "client_{uuid}".format(uuid=uuid.uuid4())
+        self.local_id = f"client_{uuid.uuid4()}"
         self.pending_metrics = []
         self.job = job
         self.pending_queue = queue.Queue()
@@ -25,7 +25,7 @@ class AbstractClient(object):
 
 class AbstractMetric(object):
     def __init__(self, meta, queue_):
-        self.local_id = "metric_{uuid}".format(uuid=uuid.uuid4())
+        self.local_id = f"metric_{uuid.uuid4()}"
         self.dtypes = {}
         self.meta = meta
         self.routing_queue = queue_

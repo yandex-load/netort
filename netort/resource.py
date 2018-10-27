@@ -275,7 +275,7 @@ class HttpOpener(object):
     def hash(self):
         last_modified = self.data_info.headers.get("Last-Modified", '')
         hash = self.url + "|" + last_modified
-        logger.info('Hash: {}'.format(hash))
+        logger.info(f'Hash: {hash}')
         return self.url + "|" + last_modified
 
     @property

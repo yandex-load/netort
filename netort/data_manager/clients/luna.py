@@ -48,7 +48,7 @@ class LunaClient(AbstractClient):
         self.failed = threading.Event()
         self.public_ids = {}
         self.luna_columns = ['key_date', 'tag']
-        self.key_date = "{key_date}".format(key_date=datetime.datetime.now().strftime("%Y-%m-%d"))
+        self.key_date = datetime.datetime.now().strftime("%Y-%m-%d")
         self.register_worker = RegisterWorkerThread(self)
         self.register_worker.start()
         self.worker = WorkerThread(self)
@@ -97,17 +97,11 @@ class LunaClient(AbstractClient):
             my_user_agent = 'DistributionNotFound'
         finally:
             headers = {
-                "User-Agent": "Uploader/{uploader_ua}, {upward_ua}".format(
-                    upward_ua=self.meta.get('user_agent', ''),
-                    uploader_ua=my_user_agent
-                )
+                "User-Agent": f"Uploader/{my_user_agent}, {self.meta.get('user_agent', '')}",
             }
         req = requests.Request(
             'POST',
-            "{api_address}{path}".format(
-                api_address=self.api_address,
-                path=self.create_job_path
-            ),
+            f"{self.api_address}{self.create_job_path}",
             headers=headers
         )
         req.data = {
@@ -130,11 +124,7 @@ class LunaClient(AbstractClient):
     def update_job(self, meta):
         req = requests.Request(
             'POST',
-            "{api_address}{path}?job={job}".format(
-                api_address=self.api_address,
-                path=self.update_job_path,
-                job=self._job_number
-            ),
+            f"{self.api_address}{self.update_job_path}?job={self._job_number}",
         )
         req.data = meta
         prepared_req = req.prepare()
@@ -150,11 +140,7 @@ class LunaClient(AbstractClient):
                 continue
             req = requests.Request(
                 'POST',
-                "{api_address}{path}?tag={tag}".format(
-                    api_address=self.api_address,
-                    path=self.update_metric_path,
-                    tag=metric_obj.tag
-                ),
+                f"{self.api_address}{self.update_metric_path}?tag={metric_obj.tag}",
             )
             req.data = meta
             # FIXME: should be called '_offset' after volta-service production is updated;
@@ -239,10 +225,7 @@ class RegisterWorkerThread(threading.Thread):
     def register_metric(self, metric):
         req = requests.Request(
             'POST',
-            "{api_address}{path}".format(
-                api_address=self.client.api_address,
-                path=self.client.create_metric_path
-            )
+            f"{self.client.api_address}{self.client.create_metric_path}",
             # not json handler anymore
             # headers = {"Content-Type": "application/json"}
         )
@@ -311,14 +294,10 @@ class WorkerThread(threading.Thread):
                         na_rep="",
                         columns=self.client.luna_columns + metric.columns
                     )
+                    query = f"INSERT INTO {self.client.dbname}.{metric.type} FORMAT TSV"  # production
                     req = requests.Request(
-                        'POST', "{api}{data_upload_handler}{query}".format(
-                            api=self.client.api_address, # production proxy
-                            data_upload_handler=self.client.upload_metric_path,
-                            query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
-                            )
-                        )
+                        'POST',
+                        f"{self.client.api_address}{self.client.upload_metric_path}{query}"
                     )
                     req.headers = {
                         'X-ClickHouse-User': 'lunapark',
