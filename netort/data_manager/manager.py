@@ -3,7 +3,7 @@ import uuid
 import time
 import os
 import pwd
-from Queue import Queue
+from queue import Queue
 
 import pandas as pd
 

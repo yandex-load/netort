@@ -158,9 +158,9 @@ class LunaClient(AbstractClient):
             )
             req.data = meta
             # FIXME: should be called '_offset' after volta-service production is updated;
-            if 'sys_uts_offset' in meta.keys() and metric_obj.type == 'metrics':
+            if 'sys_uts_offset' in meta and metric_obj.type == 'metrics':
                 req.data['offset'] = meta['sys_uts_offset']
-            elif 'log_uts_offset' in meta.keys() and metric_obj.type == 'events':
+            elif 'log_uts_offset' in meta and metric_obj.type == 'events':
                 req.data['offset'] = meta['log_uts_offset']
             prepared_req = req.prepare()
             logger.debug('Prepared update_metric request:\n%s', pretty_print(prepared_req))
@@ -224,7 +224,7 @@ class RegisterWorkerThread(threading.Thread):
             for callback, ids in self.client.job.manager.callbacks.groupby('callback'):
                 if callback == self.client.put:
                     for id_ in ids.index:
-                        if id_ not in self.client.public_ids.keys():
+                        if id_ not in self.client.public_ids:
                             metric = self.client.job.manager.get_metric_by_id(id_)
                             metric.tag = self.register_metric(metric)
                             logger.debug(
