@@ -492,9 +492,7 @@ class S3Opener(object):
         except Exception:
             logger.warning('Failed to upload file', exc_info=True)
         else:
-            return 's3://{host}:{port}/{bucket}/{object}'.format(
-                host=self.host,
-                port=self.port,
+            return 's3://{bucket}/{object}'.format(
                 bucket=bucket_key,
                 object=object_key
             )
