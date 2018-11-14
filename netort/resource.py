@@ -481,22 +481,6 @@ class S3Opener(object):
         hasher.update(self.hash)
         return "/tmp/s3_%s.downloaded_resource" % hasher.hexdigest()
 
-    def upload_file(self, bucket_key, object_key, filepath):
-        # FIXME experimental feature! use at your own risk
-        # FIXME should be moved to separate abstraction?
-        # resource opener isn't the right place for that
-        try:
-            bucket = self.conn.get_bucket(bucket_key)
-            key = bucket.new_key(object_key)
-            key.set_contents_from_filename(filepath)
-        except Exception:
-            logger.warning('Failed to upload file', exc_info=True)
-        else:
-            return 's3://{bucket}/{object}'.format(
-                bucket=bucket_key,
-                object=object_key
-            )
-
     def get_file(self):
         if not self.conn:
             raise Exception('Connection should be initialized first')
