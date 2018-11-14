@@ -451,7 +451,7 @@ class S3Opener(object):
 
     def connect(self):
         if not boto:
-            raise RuntimeError('Install `boto` please')
+            raise RuntimeError("Install 'boto' python package manually please")
         logger.debug('Opening connection to s3 %s:%s', self.host, self.port)
         self.conn = boto.connect_s3(
             host=self.host,
