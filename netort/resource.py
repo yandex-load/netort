@@ -5,7 +5,7 @@ import requests
 import gzip
 import hashlib
 import serial
-import json
+import yaml
 import socket
 from urlparse import urlparse
 from contextlib import closing
@@ -436,7 +436,7 @@ class S3Opener(object):
         # read s3 credentials
         # FIXME move to default config? which section and how securely store the keys?
         with open(credentials_path) as fname:
-            s3_credentials = json.loads(fname.read())
+            s3_credentials = yaml.load(fname.read())
         self.host = s3_credentials.get('host')
         self.port = s3_credentials.get('port')
         self.is_secure = s3_credentials.get('is_secure', False)
