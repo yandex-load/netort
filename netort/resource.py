@@ -5,9 +5,22 @@ import requests
 import gzip
 import hashlib
 import serial
+import yaml
+import socket
+from urlparse import urlparse
 from contextlib import closing
 
 logger = logging.getLogger(__name__)
+
+try:
+    import boto
+    import boto.s3.connection
+except ImportError:
+    logger.warning(
+        'Failed to import `boto` package. Install `boto`, otherwise S3 file paths opener wont work',
+        exc_info=True
+    )
+    boto = None
 
 
 class FormatDetector(object):
@@ -33,7 +46,8 @@ class ResourceManager(object):
         self.openers = {
             'http': ('http://', HttpOpener),
             'https': ('https://', HttpOpener),
-            'serial': ('/dev/', SerialOpener)
+            's3': ('s3://', S3Opener),
+            'serial': ('/dev/', SerialOpener),
         }
 
     def resource_filename(self, path):
@@ -78,6 +92,7 @@ class ResourceManager(object):
         """
         self.path = path
         opener = None
+        # FIXME this parser/matcher should use `urlparse` stdlib
         for opener_name, signature in self.openers.items():
             if self.path.startswith(signature[0]):
                 opener = signature[1](self.path)
@@ -223,7 +238,7 @@ class HttpOpener(object):
     def tmpfile_path(self):
         hasher = hashlib.md5()
         hasher.update(self.hash)
-        return "/tmp/%s.downloaded_resource" % hasher.hexdigest()
+        return "/tmp/http_%s.downloaded_resource" % hasher.hexdigest()
 
     @retry
     def get_request_info(self):
@@ -401,6 +416,121 @@ class HttpStreamWrapper:
             return next(self)
         except StopIteration:
             return ''
+
+
+class S3Opener(object):
+    """ Simple Storage Service opener
+        Downloads files.
+
+        s3credentials.json fmt:
+        {
+            "aws_access_key_id": "key-id",
+            "aws_secret_access_key": "secret-id",
+            "host": "hostname.tld",
+            "port": 7480,
+            "is_secure": false
+        }
+    """
+
+    def __init__(self, uri, credentials_path='/etc/yandex-tank/s3credentials.json'):
+        # read s3 credentials
+        # FIXME move to default config? which section and how securely store the keys?
+        with open(credentials_path) as fname:
+            s3_credentials = yaml.load(fname.read())
+        self.host = s3_credentials.get('host')
+        self.port = s3_credentials.get('port')
+        self.is_secure = s3_credentials.get('is_secure', False)
+        self.aws_access_key_id = s3_credentials.get('aws_access_key_id')
+        self.aws_secret_access_key = s3_credentials.get('aws_secret_access_key')
+        self.uri = uri
+        urlparsed = urlparse(self.uri)
+        self.bucket_key = urlparsed.netloc
+        self.object_key = urlparsed.path.strip('/')
+        self._filename = None
+        self.conn = None
+
+    def connect(self):
+        if not boto:
+            raise RuntimeError("Install 'boto' python package manually please")
+        logger.debug('Opening connection to s3 %s:%s', self.host, self.port)
+        self.conn = boto.connect_s3(
+            host=self.host,
+            port=self.port,
+            is_secure=self.is_secure,
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+        )
+
+    def __call__(self, *args, **kwargs):
+        return self.open(*args, **kwargs)
+
+    def open(self):
+        if not self._filename:
+            self._filename = self.get_file()
+        return open(self._filename, 'rb')
+
+    @property
+    def get_filename(self):
+        if not self._filename:
+            self._filename = self.get_file()
+        return self._filename
+
+    def tmpfile_path(self):
+        hasher = hashlib.md5()
+        hasher.update(self.hash)
+        return "/tmp/s3_%s.downloaded_resource" % hasher.hexdigest()
+
+    def get_file(self):
+        if not self.conn:
+            raise Exception('Connection should be initialized first')
+        tmpfile_path = self.tmpfile_path()
+        logger.info("Downloading resource %s to %s", self.uri, tmpfile_path)
+        try:
+            bucket = self.conn.get_bucket(self.bucket_key)
+        except socket.gaierror:
+            logger.warning('Failed to connect to s3 host %s:%s', self.host, self.port)
+            raise
+        except boto.exception.S3ResponseError:
+            logger.warning('S3 error trying to get bucket: %s', self.bucket_key)
+            logger.debug('S3 error trying to get bucket: %s', self.bucket_key, exc_info=True)
+            raise
+        except Exception:
+            logger.debug('Failed to get s3 resource: %s', self.uri, exc_info=True)
+            raise RuntimeError('Failed to get s3 resource %s' % self.uri)
+        else:
+            try:
+                key = bucket.get_key(self.object_key)
+                if not key:
+                    raise RuntimeError('No such object %s at bucket %s', self.object_key, self.bucket_key)
+                else:
+                    key.get_contents_to_filename(tmpfile_path)
+            except boto.exception.S3ResponseError:
+                logger.warning(
+                    'S3 error trying to get key %s from bucket: %s',
+                    self.object_key, self.bucket_key
+                )
+                logger.debug(
+                    'S3 error trying to get key %s from bucket: %s',
+                    self.object_key, self.bucket_key, exc_info=True
+                )
+                raise
+            else:
+                logger.info("Successfully downloaded resource %s to %s", self.uri, tmpfile_path)
+                self._filename = tmpfile_path
+                return tmpfile_path
+
+    @property
+    def hash(self):
+        hashed_str = "{bucket_key}_{object_key}".format(
+            bucket_key=self.bucket_key,
+            object_key=self.object_key,
+        )
+        return hashed_str
+
+    @property
+    def data_length(self):
+        return os.path.getsize(self.get_filename)
 
 
 manager = ResourceManager()
