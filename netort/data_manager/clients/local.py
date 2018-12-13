@@ -85,7 +85,7 @@ class ProcessingThread(threading.Thread):
             os.path.join(
                 self.client.job.artifacts_dir, "{id}.data".format(id=metric.local_id)
             ),
-            mode='wb'
+            mode='w'
         )
 
     def run(self):
@@ -150,7 +150,7 @@ class ProcessingThread(threading.Thread):
 
     def __close_files_and_dump_meta(self):
         [self.file_streams[file_].close() for file_ in self.file_streams]
-        with open(os.path.join(self.client.job.artifacts_dir, self.client.metrics_meta_fname), 'wb') as meta_f:
+        with open(os.path.join(self.client.job.artifacts_dir, self.client.metrics_meta_fname), 'w') as meta_f:
             json.dump(
                 {"metrics": self.client.registered_meta, "job_meta": self.client.meta},
                 meta_f,
