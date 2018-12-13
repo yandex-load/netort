@@ -18,7 +18,7 @@ class FormatDetector(object):
         self.formats = {'gzip': (0, b'\x1f\x8b'), 'tar': (257, b'ustar\x0000')}
 
     def detect_format(self, header):
-        for fmt, signature in self.formats.iteritems():
+        for fmt, signature in self.formats.items():
             if signature[1] == header[signature[0]:len(signature[1])]:
                 return fmt
 
@@ -78,7 +78,7 @@ class ResourceManager(object):
         """
         self.path = path
         opener = None
-        for opener_name, signature in self.openers.items():
+        for opener_name, signature in list(self.openers.items()):
             if self.path.startswith(signature[0]):
                 opener = signature[1](self.path)
                 break
@@ -150,7 +150,7 @@ def retry(func):
             try:
                 return func(self, *args, **kwargs)
             except:
-                print('{} failed. Retrying.'.format(func))
+                print(('{} failed. Retrying.'.format(func)))
                 continue
         return func(self, *args, **kwargs)
     return with_retry
@@ -182,7 +182,7 @@ class HttpOpener(object):
                     self.url, stream=True, verify=False,
                     timeout=self.timeout)) as stream:
             stream_iterator = stream.raw.stream(100, decode_content=True)
-            header = stream_iterator.next()
+            header = next(stream_iterator)
             fmt = self.fmt_detector.detect_format(header)
             logger.debug('Resource %s format detected: %s.', self.url, fmt)
         if not self.force_download and fmt != 'gzip' and self.data_length > 10**8:
@@ -319,7 +319,7 @@ class HttpStreamWrapper:
 
     def __iter__(self):
         while True:
-            yield self.next()
+            yield next(self)
 
     def _reopen_stream(self):
         self.stream.connection.close()
@@ -340,7 +340,7 @@ class HttpStreamWrapper:
         self._content_consumed = False
 
     def _enhance_buffer(self):
-        self.buffer += self.stream_iterator.next()
+        self.buffer += next(self.stream_iterator)
 
     def tell(self):
         return self.pointer
@@ -355,7 +355,7 @@ class HttpStreamWrapper:
             self.pointer = position
             self.buffer = self.buffer[position:]
 
-    def next(self):
+    def __next__(self):
         while '\n' not in self.buffer:
             try:
                 self._enhance_buffer()
@@ -398,7 +398,7 @@ class HttpStreamWrapper:
         a bunch into it already
         """
         try:
-            return self.next()
+            return next(self)
         except StopIteration:
             return ''
 
