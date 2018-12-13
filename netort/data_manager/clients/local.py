@@ -20,24 +20,29 @@ output artifact sample:
 123	123.123
 456	456.456
 
-output metric_meta.json sample:
+output meta.json sample:
 {
-    "metric_d12dab4f-e4ef-4c47-89e6-859f73737c64": {
-        "dtypes": {
-            "ts": "int64",
-            "value": "float64"
-        },
-        "meta": {
-            "hostname": "localhost",
-            "name": "cpu_usage",
-            "some_meta_key": "some_meta_value",
+    "metrics": {
+        "metric_d12dab4f-e4ef-4c47-89e6-859f73737c64": {
+            "dtypes": {
+                "ts": "int64",
+                "value": "float64"
+            },
+            "meta": {
+                "hostname": "localhost",
+                "name": "cpu_usage",
+                "some_meta_key": "some_meta_value",
+                "type": "metrics"
+            },
+            "names": [
+                "ts",
+                "value"
+            ],
             "type": "metrics"
         },
-        "names": [
-            "ts",
-            "value"
-        ],
-        "type": "metrics"
+    },
+    "job_meta": {
+        "key": "valueZ",
     }
 }
 """
@@ -45,7 +50,7 @@ output metric_meta.json sample:
 
 class LocalStorageClient(AbstractClient):
     separator = '\t'
-    metrics_meta_fname = '__metrics_meta.json'
+    metrics_meta_fname = 'meta.json'
 
     def __init__(self, meta, job):
         super(LocalStorageClient, self).__init__(meta, job)
@@ -63,7 +68,7 @@ class LocalStorageClient(AbstractClient):
         self.processing_thread.stop()
         logger.info('Joining local client processing thread...')
         self.processing_thread.join()
-        logger.info('Local client finished its work.')
+        logger.info('Local client finished its work. Artifacts are here %s', self.job.artifacts_dir)
 
 
 class ProcessingThread(threading.Thread):
@@ -146,7 +151,12 @@ class ProcessingThread(threading.Thread):
     def __close_files_and_dump_meta(self):
         [self.file_streams[file_].close() for file_ in self.file_streams]
         with open(os.path.join(self.client.job.artifacts_dir, self.client.metrics_meta_fname), 'wb') as meta_f:
-            json.dump(self.client.registered_meta, meta_f, indent=4, sort_keys=True)
+            json.dump(
+                {"metrics": self.client.registered_meta, "job_meta": self.client.meta},
+                meta_f,
+                indent=4,
+                sort_keys=True
+            )
 
     def stop(self):
         self._interrupted.set()
