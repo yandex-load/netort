@@ -14,7 +14,7 @@ def execute(cmd, shell=False, poll_period=1.0, catch_out=False):
     stdout = ""
     stderr = ""
 
-    if not shell and isinstance(cmd, basestring):
+    if not shell and isinstance(cmd, str):
         cmd = shlex.split(cmd)
 
     if catch_out:
