@@ -144,7 +144,7 @@ class LunaClient(AbstractClient):
         logger.debug('Answ data: %s', response.content)
 
     def update_metric(self, meta):
-        for metric_tag, metric_obj in list(self.job.manager.metrics.items()):
+        for metric_tag, metric_obj in self.job.manager.metrics.items():
             if not metric_obj.tag:
                 logger.debug('Metric %s has no public tag, skipped updating metric', metric_tag)
                 continue
@@ -158,9 +158,9 @@ class LunaClient(AbstractClient):
             )
             req.data = meta
             # FIXME: should be called '_offset' after volta-service production is updated;
-            if 'sys_uts_offset' in list(meta.keys()) and metric_obj.type == 'metrics':
+            if 'sys_uts_offset' in meta and metric_obj.type == 'metrics':
                 req.data['offset'] = meta['sys_uts_offset']
-            elif 'log_uts_offset' in list(meta.keys()) and metric_obj.type == 'events':
+            elif 'log_uts_offset' in meta and metric_obj.type == 'events':
                 req.data['offset'] = meta['log_uts_offset']
             prepared_req = req.prepare()
             logger.debug('Prepared update_metric request:\n%s', pretty_print(prepared_req))
@@ -224,7 +224,7 @@ class RegisterWorkerThread(threading.Thread):
             for callback, ids in self.client.job.manager.callbacks.groupby('callback'):
                 if callback == self.client.put:
                     for id_ in ids.index:
-                        if id_ not in list(self.client.public_ids.keys()):
+                        if id_ not in self.client.public_ids:
                             metric = self.client.job.manager.get_metric_by_id(id_)
                             metric.tag = self.register_metric(metric)
                             logger.debug(
@@ -251,8 +251,7 @@ class RegisterWorkerThread(threading.Thread):
             'type': metric.type,
             'local_id': metric.local_id
         }
-        for meta_key, meta_value in list(metric.meta.items()):
-            req.data[meta_key] = meta_value
+        req.data.update(metric.meta)
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)

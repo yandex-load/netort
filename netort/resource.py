@@ -78,7 +78,7 @@ class ResourceManager(object):
         """
         self.path = path
         opener = None
-        for opener_name, signature in list(self.openers.items()):
+        for opener_name, signature in self.openers.items():
             if self.path.startswith(signature[0]):
                 opener = signature[1](self.path)
                 break
@@ -150,7 +150,7 @@ def retry(func):
             try:
                 return func(self, *args, **kwargs)
             except:
-                print(('{} failed. Retrying.'.format(func)))
+                print('{} failed. Retrying.'.format(func))
                 continue
         return func(self, *args, **kwargs)
     return with_retry
