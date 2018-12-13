@@ -3,7 +3,10 @@ import uuid
 import time
 import os
 import pwd
-from queue import Queue
+if six.PY3:
+    from queue import Queue
+else:  # six.PY2
+    from Queue import Queue
 
 import pandas as pd
 
@@ -222,7 +225,7 @@ class DataManager(object):
         elif filter_.get('type') == '__ANY__':
             return filterable
         else:
-            for key, value in list(filter_.items()):
+            for key, value in filter_.items():
                 condition.append('{key} == "{value}"'.format(key=key, value=value))
         try:
             res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
@@ -244,7 +247,7 @@ class DataManager(object):
             return filterable
         else:
             for existing_col in filterable:
-                for meta_tag, meta_value in list(filter_.items()):
+                for meta_tag, meta_value in filter_.items():
                     if meta_tag == existing_col:
                         condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
             try:

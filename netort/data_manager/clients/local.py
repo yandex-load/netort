@@ -116,7 +116,7 @@ class ProcessingThread(threading.Thread):
                     logger.debug('Creating artifact file for %s', metric.local_id)
                     self.__create_artifact(metric)
                     dtypes = {}
-                    for name, type_ in list(metric.dtypes.items()):
+                    for name, type_ in metric.dtypes.items():
                         dtypes[name] = type_.__name__
                     this_metric_meta = {
                         'type': metric.type,

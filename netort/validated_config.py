@@ -118,7 +118,7 @@ class ValidatedConfig(object):
         return self.__set_core_dynamic_options(normalized) if self.with_dynamic_options else normalized
 
     def __set_core_dynamic_options(self, config):
-        for option, setter in list(self.DYNAMIC_OPTIONS.items()):
+        for option, setter in self.DYNAMIC_OPTIONS.items():
             config[self.CORE_SECTION][option] = setter()
         return config
 
