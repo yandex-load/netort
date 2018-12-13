@@ -3,6 +3,7 @@ import uuid
 import time
 import os
 import pwd
+import six
 if six.PY3:
     from queue import Queue
 else:  # six.PY2

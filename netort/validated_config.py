@@ -15,7 +15,7 @@ class ValidationError(Exception):
 
 
 def load_yaml_schema(path):
-    with open(path, 'r') as f:
+    with open(path) as f:
         return yaml.load(f)
 
 
