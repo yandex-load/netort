@@ -226,7 +226,7 @@ class DataManager(object):
                 condition.append('{key} == "{value}"'.format(key=key, value=value))
         try:
             res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-        except pd.computation.ops.UndefinedVariableError:
+        except pd.core.computation.ops.UndefinedVariableError:
             return pd.DataFrame()
         else:
             return res
@@ -238,7 +238,7 @@ class DataManager(object):
         condition = []
         try:
             subscribers_for_any = filterable.query('type == "__ANY__"')
-        except pd.computation.ops.UndefinedVariableError:
+        except pd.core.computation.ops.UndefinedVariableError:
             subscribers_for_any = pd.DataFrame()
         if not filter_:
             return filterable
@@ -249,7 +249,7 @@ class DataManager(object):
                         condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
             try:
                 res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-            except pd.computation.ops.UndefinedVariableError:
+            except pd.core.computation.ops.UndefinedVariableError:
                 return pd.DataFrame().append(subscribers_for_any)
             else:
                 return res.append(subscribers_for_any)
