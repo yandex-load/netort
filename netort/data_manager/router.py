@@ -41,7 +41,7 @@ class MetricsRouter(threading.Thread):
         data = get_nowait_from_queue(self.source)
         for df, type_ in data:
             if type_ in self.routing_buffer:
-                self.routing_buffer[type_] = pd.concat([self.routing_buffer[type_], df])
+                self.routing_buffer[type_] = pd.concat([self.routing_buffer[type_], df], sort=False)
             else:
                 self.routing_buffer[type_] = df
 
