@@ -221,7 +221,7 @@ class RegisterWorkerThread(threading.Thread):
     def run(self):
         while not self._interrupted.is_set():
             # find this client's callback, find unregistered metrics for this client and register
-            for callback, ids in self.client.job.manager.callbacks.groupby('callback'):
+            for callback, ids in self.client.job.manager.callbacks.groupby('callback', sort=False):
                 if callback == self.client.put:
                     for id_ in ids.index:
                         if id_ not in self.client.public_ids:
@@ -295,7 +295,7 @@ class WorkerThread(threading.Thread):
         except queue.Empty:
             time.sleep(1)
         else:
-            for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+            for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if not metric:
                     logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)

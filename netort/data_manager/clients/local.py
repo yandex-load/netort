@@ -107,7 +107,7 @@ class ProcessingThread(threading.Thread):
         except queue.Empty:
             time.sleep(1)
         else:
-            for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+            for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if not metric:
                     logger.warning('Received unknown metric id: %s', metric_local_id)
