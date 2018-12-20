@@ -59,7 +59,7 @@ class MetricsRouter(threading.Thread):
                         how='left',
                         left_index=True,
                         right_index=True
-                ).groupby('callback'):
+                ).groupby('callback', sort=False):
                     # exec_time_start = time.time()
                     callback(incoming_chunks)
                     # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
