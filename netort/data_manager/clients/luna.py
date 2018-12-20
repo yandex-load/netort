@@ -205,7 +205,7 @@ class LunaClient(AbstractClient):
         self.worker.join()
         # FIXME hardcored host
         # FIXME we dont know front hostname, because api address now is clickhouse address
-        logger.info('Luna job url: {}{}', 'https://volta.yandex-team.ru/tests/', self.job_number)
+        logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
         logger.info('Luna client done its work')
 
 
