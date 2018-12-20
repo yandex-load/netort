@@ -15,6 +15,9 @@ from .clients import available_clients
 from .metrics import available_metrics
 from .router import MetricsRouter
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)  # pandas sorting warnings
+
 
 logger = logging.getLogger(__name__)
 
