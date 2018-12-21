@@ -1,6 +1,10 @@
+import logging
 import queue as q
 import threading
 import time
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_nowait_from_queue(queue):
@@ -27,11 +31,16 @@ class Drain(threading.Thread):
         self.setDaemon(True)  # bdk+ytank stuck w/o this at join of this thread
 
     def run(self):
-        for item in self.source:
-            self.destination.put(item)
-            if self._interrupted.is_set():
-                break
-        self._finished.set()
+        try:
+            for item in self.source:
+                self.destination.put(item)
+                if self._interrupted.is_set():
+                    break
+        except Exception as e:
+            logger.error(e, exc_info=True)
+            self._interrupted.set()
+        finally:
+            self._finished.set()
 
     def wait(self, timeout=None):
         self._finished.wait(timeout=timeout)
