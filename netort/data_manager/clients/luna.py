@@ -11,6 +11,7 @@ import time
 import queue
 import datetime
 import os
+import six
 
 requests.packages.urllib3.disable_warnings()
 
@@ -119,7 +120,7 @@ class LunaClient(AbstractClient):
         response = send_chunk(self.session, prepared_req)
         logger.debug('Luna create job status: %s', response.status_code)
         logger.debug('Answ data: %s', response.content)
-        job_id = response.content
+        job_id = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
         if not job_id:
             self.failed.set()
             raise ValueError('Luna returned answer without jobid: %s', response.content)
@@ -158,9 +159,9 @@ class LunaClient(AbstractClient):
             )
             req.data = meta
             # FIXME: should be called '_offset' after volta-service production is updated;
-            if 'sys_uts_offset' in meta.keys() and metric_obj.type == 'metrics':
+            if 'sys_uts_offset' in meta and metric_obj.type == 'metrics':
                 req.data['offset'] = meta['sys_uts_offset']
-            elif 'log_uts_offset' in meta.keys() and metric_obj.type == 'events':
+            elif 'log_uts_offset' in meta and metric_obj.type == 'events':
                 req.data['offset'] = meta['log_uts_offset']
             prepared_req = req.prepare()
             logger.debug('Prepared update_metric request:\n%s', pretty_print(prepared_req))
@@ -205,7 +206,7 @@ class LunaClient(AbstractClient):
         self.worker.join()
         # FIXME hardcored host
         # FIXME we dont know front hostname, because api address now is clickhouse address
-        logger.info('Luna job url: %s/tests/%s', 'https://volta.yandex-team.ru', self.job_number)
+        logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
         logger.info('Luna client done its work')
 
 
@@ -221,10 +222,10 @@ class RegisterWorkerThread(threading.Thread):
     def run(self):
         while not self._interrupted.is_set():
             # find this client's callback, find unregistered metrics for this client and register
-            for callback, ids in self.client.job.manager.callbacks.groupby('callback'):
+            for callback, ids in self.client.job.manager.callbacks.groupby('callback', sort=False):
                 if callback == self.client.put:
                     for id_ in ids.index:
-                        if id_ not in self.client.public_ids.keys():
+                        if id_ not in self.client.public_ids:
                             metric = self.client.job.manager.get_metric_by_id(id_)
                             metric.tag = self.register_metric(metric)
                             logger.debug(
@@ -251,15 +252,14 @@ class RegisterWorkerThread(threading.Thread):
             'type': metric.type,
             'local_id': metric.local_id
         }
-        for meta_key, meta_value in metric.meta.items():
-            req.data[meta_key] = meta_value
+        req.data.update(metric.meta)
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
         if not response.content:
-            logger.debug('Luna not returned uniq_id for metric registration: %s', response.content)
+            logger.debug('Luna did not return uniq_id for metric registration: %s', response.content)
         else:
-            return response.content
+            return response.content.decode('utf-8') if six.PY3 else response.content
 
     def is_finished(self):
         return self._finished
@@ -296,7 +296,7 @@ class WorkerThread(threading.Thread):
         except queue.Empty:
             time.sleep(1)
         else:
-            for metric_local_id, df_grouped_by_id in df.groupby(level=0):
+            for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if not metric:
                     logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
@@ -308,7 +308,7 @@ class WorkerThread(threading.Thread):
                         sep='\t',
                         header=False,
                         index=False,
-                        na_rep="",
+                        na_rep='',
                         columns=self.client.luna_columns + metric.columns
                     )
                     req = requests.Request(

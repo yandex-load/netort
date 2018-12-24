@@ -3,13 +3,20 @@ import uuid
 import time
 import os
 import pwd
-from Queue import Queue
+import six
+if six.PY3:
+    from queue import Queue
+else:  # six.PY2
+    from Queue import Queue
 
 import pandas as pd
 
 from .clients import available_clients
 from .metrics import available_metrics
 from .router import MetricsRouter
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)  # pandas sorting warnings
 
 
 logger = logging.getLogger(__name__)
@@ -226,7 +233,7 @@ class DataManager(object):
                 condition.append('{key} == "{value}"'.format(key=key, value=value))
         try:
             res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-        except pd.computation.ops.UndefinedVariableError:
+        except pd.core.computation.ops.UndefinedVariableError:
             return pd.DataFrame()
         else:
             return res
@@ -238,7 +245,7 @@ class DataManager(object):
         condition = []
         try:
             subscribers_for_any = filterable.query('type == "__ANY__"')
-        except pd.computation.ops.UndefinedVariableError:
+        except pd.core.computation.ops.UndefinedVariableError:
             subscribers_for_any = pd.DataFrame()
         if not filter_:
             return filterable
@@ -249,7 +256,7 @@ class DataManager(object):
                         condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
             try:
                 res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-            except pd.computation.ops.UndefinedVariableError:
+            except pd.core.computation.ops.UndefinedVariableError:
                 return pd.DataFrame().append(subscribers_for_any)
             else:
                 return res.append(subscribers_for_any)
