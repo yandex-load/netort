@@ -120,13 +120,13 @@ class LunaClient(AbstractClient):
         response = send_chunk(self.session, prepared_req)
         logger.debug('Luna create job status: %s', response.status_code)
         logger.debug('Answ data: %s', response.content)
-        job_id = response.content
+        job_id = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
         if not job_id:
             self.failed.set()
             raise ValueError('Luna returned answer without jobid: %s', response.content)
         else:
-            logger.info('Luna job created: %s', job_id.decode('utf-8') if isinstance(job_id, bytes) else job_id)
-            return job_id.decode('utf-8') if isinstance(job_id, bytes) else job_id
+            logger.info('Luna job created: %s', job_id)
+            return job_id
 
     def update_job(self, meta):
         req = requests.Request(
