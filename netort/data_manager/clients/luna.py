@@ -11,6 +11,7 @@ import time
 import queue
 import datetime
 import os
+import six
 
 requests.packages.urllib3.disable_warnings()
 
@@ -256,9 +257,9 @@ class RegisterWorkerThread(threading.Thread):
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
         if not response.content:
-            logger.debug('Luna not returned uniq_id for metric registration: %s', response.content)
+            logger.debug('Luna did not return uniq_id for metric registration: %s', response.content)
         else:
-            return response.content.decode('utf-8')
+            return response.content.decode('utf-8') if six.PY3 else response.content
 
     def is_finished(self):
         return self._finished
