@@ -258,7 +258,7 @@ class RegisterWorkerThread(threading.Thread):
         if not response.content:
             logger.debug('Luna not returned uniq_id for metric registration: %s', response.content)
         else:
-            return response.content
+            return response.content.decode('utf-8')
 
     def is_finished(self):
         return self._finished
