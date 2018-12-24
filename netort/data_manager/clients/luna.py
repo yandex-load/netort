@@ -124,7 +124,7 @@ class LunaClient(AbstractClient):
             self.failed.set()
             raise ValueError('Luna returned answer without jobid: %s', response.content)
         else:
-            logger.info('Luna job created: %s', job_id)
+            logger.info('Luna job created: %s', job_id.decode('utf-8') if isinstance(job_id, bytes) else job_id)
             return job_id.decode('utf-8') if isinstance(job_id, bytes) else job_id
 
     def update_job(self, meta):
@@ -307,7 +307,7 @@ class WorkerThread(threading.Thread):
                         sep='\t',
                         header=False,
                         index=False,
-                        na_rep="",
+                        na_rep='',
                         columns=self.client.luna_columns + metric.columns
                     )
                     req = requests.Request(
@@ -324,6 +324,7 @@ class WorkerThread(threading.Thread):
                         'X-ClickHouse-Key': 'lunapark'
                     }
                     req.data = body
+                    logging.error('EEEEEEEEEEE %s', body[:3])
                     prepared_req = req.prepare()
                     try:
                         send_chunk(self.session, prepared_req)
