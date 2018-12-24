@@ -324,7 +324,7 @@ class WorkerThread(threading.Thread):
                         'X-ClickHouse-Key': 'lunapark'
                     }
                     req.data = body
-                    logging.error('EEEEEEEEEEE %s', body[:3])
+                    logging.error('EEEEEEEEEEE %s', body[:1000])
                     prepared_req = req.prepare()
                     try:
                         send_chunk(self.session, prepared_req)
