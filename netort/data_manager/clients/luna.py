@@ -71,8 +71,8 @@ class LunaClient(AbstractClient):
                 self._job_number = self.create_job()
                 self.__test_id_link_to_jobno()
             except RetryError:
-                logger.debug('Failed to create lunapark volta job', exc_info=True)
-                logger.warning('Failed to create lunapark volta job')
+                logger.debug('Failed to create Luna job', exc_info=True)
+                logger.warning('Failed to create Luna job')
                 self.failed.set()
             else:
                 return self._job_number
