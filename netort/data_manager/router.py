@@ -14,6 +14,7 @@ class MetricsRouter(threading.Thread):
     callback receives resulting dataframe
     """
 
+    # TODO: MetricsRouter should not know anything about DataManager. Pass source and subscribers directly.
     def __init__(self, manager):
         super(MetricsRouter, self).__init__()
         self.manager = manager

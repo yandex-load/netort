@@ -37,7 +37,7 @@ class AbstractMetric(object):
         raise NotImplementedError('Abstract type property should be redefined!')
 
     def put(self, df):
-        # FIXME assert w/ dtypes here ?
+        # FIXME check dtypes of an incoming dataframe
         df['type'] = self.type
         df['metric_local_id'] = self.local_id
         df = df.set_index('metric_local_id')

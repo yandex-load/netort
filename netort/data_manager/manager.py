@@ -1,3 +1,4 @@
+# TODO: move code that works with config to library's clients (e.g., Volta). Classes of this library should provide constructors with described arguments only
 import logging
 import uuid
 import time
@@ -16,6 +17,7 @@ from .metrics import available_metrics
 from .router import MetricsRouter
 
 import warnings
+# FIXME: this one is dangerous because it ignores all FutureWarnings, not only required one
 warnings.filterwarnings("ignore", category=FutureWarning)  # pandas sorting warnings
 
 
@@ -24,8 +26,22 @@ logger = logging.getLogger(__name__)
 
 class DataSession(object):
     """
+    Workflow:
+        * create DataSession object
+        * use `new_metric` to add metrics to your datasession
+        * use `metric.put` to add data to the metric
+        * call `close` to close your datasession
+
+    Note:
+        * send your data in chunks because it could be of bigger size that server's buffer
+
     Args:
         config(dict): configuration options (list of DataManager clients, test meta data etc)
+
+    TODO:
+        * move config parameters to kwargs, describe them here
+        * chunkify data for upload inside the uploader code
+        * fight performance issues (probably caused by poor pandas write_csv performance)
     """
     def __init__(self,  config):
         self.config = config
@@ -42,6 +58,8 @@ class DataSession(object):
         logger.debug('DataSession clients: %s', self.clients)
         logger.debug('DataSession subscribers: %s', self.manager.subscribers)
 
+    # TODO: extract client creation as factory method
+    # TODO: consider removing clients from config and add them via `new_client` method
     def __create_clients(self, clients):
         for client_meta in clients:
             type_ = client_meta.get('type')
@@ -55,9 +73,11 @@ class DataSession(object):
             else:
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
+    # FIXME: move parameters from dict to args/kwargs, describe in docstring
     def new_metric(self, meta):
         return self.manager.new_metric(meta)
 
+    # FIXME: remove specific client code (netort knows nothing about Yandex.Tank)
     def new_tank_metric(self, _type, name, hostname=None, group=None, source=None, *kw):
         return self.manager.new_tank_metric(_type, name, hostname, group, source, *kw)
 
@@ -87,6 +107,7 @@ class DataSession(object):
             else:
                 logger.debug('Client metric updated: %s', client)
 
+    # TODO: artifacts dir should be inside "local" client. Or does it?
     @property
     def artifacts_dir(self):
         if not self._artifacts_dir:
@@ -124,16 +145,20 @@ class DataSession(object):
 
 
 class DataManager(object):
-    """
-        Attributes:
-            metrics (list): All registered metrics for DataManager session
-            subscribers (pd.DataFrame): All registered subscribers for DataManager session
-            callbacks (pd.DataFrame): callbacks for metric ids <-> subscribers' callbacks, used by router
-            routing_queue (Queue): incoming unrouted metrics data,
-                will be processed by MetricsRouter to subscribers' callbacks
-            router (MetricsRouter object): Router thread. Read routing queue, concat incoming messages by metrics.type,
-                left join by callback and call callback w/ resulting dataframe
+    """DataManager routes data to subscribers using metrics meta as a filter. When someone calls
+    `new_metric`, DataManager will find the subscribers that are interested in this metric (using meta).
+    When someone calls `subscribe`, DataManager finds the metrics that this subscriber is interested in.
 
+    MetricsRouter is a facility that DataManager uses for passing incoming data to subscribers.
+
+    Attributes:
+        metrics (list): All registered metrics for DataManager session
+        subscribers (pd.DataFrame): All registered subscribers for DataManager session
+        callbacks (pd.DataFrame): callbacks for metric ids <-> subscribers' callbacks, used by router
+        routing_queue (Queue): incoming unrouted metrics data,
+            will be processed by MetricsRouter to subscribers' callbacks
+        router (MetricsRouter object): Router thread. Read routing queue, concat incoming messages by metrics.type,
+            left join by callback and call callback w/ resulting dataframe
     """
     def __init__(self):
         self.metrics = {}
@@ -177,6 +202,7 @@ class DataManager(object):
         else:
             raise NotImplementedError('Unknown metric type: %s' % type_)
 
+    # FIXME: remove specific client code (netort knows nothing about Yandex.Tank)
     def new_tank_metric(self, _type, name, hostname=None, group=None, source=None, *kw):
         """
         Create and register metric,
