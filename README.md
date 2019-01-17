@@ -34,12 +34,14 @@ Test is created during a *Data Session*. One data session — one test.
 6. Close the data session
 
 ```
+import numpy as np
+import pandas as pd
 from netort.data_manager import data_session
 from netort.data_manager.clients import LunaClient, LocalStorageClient
 
-luna = LunaClient(api_address="http://example.org")
-local = LocalStorageClient()
+# Prepare data
 
+# random metrics
 voltage_df = pd.DataFrame()
 voltage_df["ts"] = (np.arange(0,1000000,100)
 voltage_df["value"] = np.random.randint(1000000, size=10000))
@@ -48,6 +50,7 @@ current_df = pd.DataFrame()
 current_df["ts"] = (np.arange(0,1000000,100)
 current_df["value"] = np.random.randint(1000000, size=10000))
 
+# events
 logs_df = pd.DataFrame([
         [0, "log message 1"],
         [11345, "my event number 1"],
@@ -66,13 +69,24 @@ errors_df = pd.DataFrame([
     ],
     columns=["ts", "value"])
 
-with data_session(dict(name="My first test")) as ds:
-    ds.subscribe(luna, local)
-    voltage = ds.new_metric(dict(name="Voltage"))
-    current = ds.new_metric(dict(name="Current"), aggregate=True)
-    logs = ds.new_events(dict(name="Log messages"))
-    error_codes = ds.new_events(dict(name="Error codes), aggregate=True)
+# specify backends (1)
+luna = LunaClient(  # store to Luna service
+    store_raw=False,  # if data stream has aggregates, upload only aggregates without raw data
+    api_address="http://example.org")
+local = LocalStorageClient()  # store to local files
 
+# create the data session (2)
+# It will close automatically (6) because we've used a context manager
+with data_session(dict(name="My first test")) as ds:
+    ds.subscribe(luna, local)  # subscribe the backends (3)
+
+    # create metrics and events (4)
+    voltage = ds.new_metric(dict(name="Voltage"))
+    current = ds.new_metric(dict(name="Current"), aggregate=True)  # this metric will be aggregated
+    logs = ds.new_events(dict(name="Log messages"))
+    error_codes = ds.new_events(dict(name="Error codes), aggregate=True)  # these events will be aggregated
+
+    # add data (5)
     voltage.put(voltage_df)
     current.put(current_df)
     logs.put(log_df)
