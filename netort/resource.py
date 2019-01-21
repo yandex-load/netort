@@ -447,20 +447,23 @@ class S3Opener(object):
         self.bucket_key = urlparsed.netloc
         self.object_key = urlparsed.path.strip('/')
         self._filename = None
-        self.conn = None
+        self._conn = None
 
-    def connect(self):
-        if not boto:
-            raise RuntimeError("Install 'boto' python package manually please")
-        logger.debug('Opening connection to s3 %s:%s', self.host, self.port)
-        self.conn = boto.connect_s3(
-            host=self.host,
-            port=self.port,
-            is_secure=self.is_secure,
-            aws_access_key_id=self.aws_access_key_id,
-            aws_secret_access_key=self.aws_secret_access_key,
-            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
-        )
+    @property
+    def conn(self):
+        if self._conn is None:
+            if not boto:
+                raise RuntimeError("Install 'boto' python package manually please")
+            logger.debug('Opening connection to s3 %s:%s', self.host, self.port)
+            self._conn = boto.connect_s3(
+                host=self.host,
+                port=self.port,
+                is_secure=self.is_secure,
+                aws_access_key_id=self.aws_access_key_id,
+                aws_secret_access_key=self.aws_secret_access_key,
+                calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+            )
+        return self._conn
 
     def __call__(self, *args, **kwargs):
         return self.open(*args, **kwargs)
