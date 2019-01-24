@@ -236,10 +236,13 @@ class DataManager(object):
         return metric_obj
 
     def new_aggregated_metric(self, name, aggregators):
+
         aggregates = {}
-        for aggregator in aggregators:
-            for series in aggregator:
-                aggregates.setdefault(aggregator, {})[series.name] = self.new_tank_metric()
+
+
+        # for aggregator in aggregators:
+        #     for series in aggregator:
+        #         aggregates.setdefault(aggregator, {})[series.name] = self.new_tank_metric()
 
     def subscribe(self, callback, filter_):
         """
