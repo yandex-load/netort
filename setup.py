@@ -18,7 +18,7 @@ common library for yandex-load org
         # 'pytest-runner', 'flake8',
     ],
     tests_require=[
-        # 'pytest',
+        'pytest', 'pytest-runner',
     ],
     license='MPLv2',
     classifiers=[
