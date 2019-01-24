@@ -23,6 +23,15 @@ class AbstractClient(object):
         pass
 
 
+class MetricData(object):
+    def __init__(self, df, _type, local_id):
+        df['metric_local_id'] = local_id
+        df = df.set_index('metric_local_id')
+        self.df = df
+        self.type = _type
+        self.local_id = local_id
+
+
 class AbstractMetric(object):
     def __init__(self, meta, queue_):
         self.local_id = "metric_{uuid}".format(uuid=uuid.uuid4())
@@ -38,7 +47,8 @@ class AbstractMetric(object):
 
     def put(self, df):
         # FIXME check dtypes of an incoming dataframe
-        df['type'] = self.type
-        df['metric_local_id'] = self.local_id
-        df = df.set_index('metric_local_id')
-        self.routing_queue.put((df, self.type))
+        # df['type'] = self.type
+        # df['metric_local_id'] = self.local_id
+        # df = df.set_index('metric_local_id')
+        data = MetricData(df, self.type, self.local_id)
+        self.routing_queue.put(data)

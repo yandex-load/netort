@@ -5,23 +5,6 @@ import numpy as np
 import pandas as pd
 
 
-class Aggregate(AbstractMetric):
-    qlist = ['q%d'%n for n in Aggregator.perc_list]
-    columns = ['ts'] + qlist + ['average', 'stddev']
-
-    def __init__(self, meta, queue):
-        super(Aggregate, self).__init__(meta, queue)
-        self.dtypes = {
-            'ts': np.int64,
-            'average': np.float64,
-            'stddev': np.float64,
-        }
-        for q in self.qlist:
-            self.dtypes[q] = np.float64
-
-    @property
-    def type(self):
-        return 'aggregates'
 
 
 class Aggregator(object):
@@ -59,3 +42,21 @@ AGGREGATORS = {
     "stddev":Aggregator._std,
     "len":Aggregator._len,
 }
+
+class Aggregate(AbstractMetric):
+    qlist = ['q%d'%n for n in Aggregator.perc_list]
+    columns = ['ts'] + qlist + ['average', 'stddev']
+
+    def __init__(self, meta, queue):
+        super(Aggregate, self).__init__(meta, queue)
+        self.dtypes = {
+            'ts': np.int64,
+            'average': np.float64,
+            'stddev': np.float64,
+        }
+        for q in self.qlist:
+            self.dtypes[q] = np.float64
+
+    @property
+    def type(self):
+        return 'aggregates'

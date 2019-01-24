@@ -3,7 +3,6 @@ import time
 import pandas as pd
 import logging
 
-from netort.data_manager.manager import DataManager
 from netort.data_manager.metrics import Aggregate
 
 from ..data_processing import get_nowait_from_queue
@@ -18,7 +17,7 @@ class MetricsRouter(threading.Thread):
     """
 
     # TODO: MetricsRouter should not know anything about DataManager. Pass source and subscribers directly.
-    def __init__(self, manager, aggregator_buffer_size=5):
+    def __init__(self, manager, aggregator_buffer_size=10):
         """
         :param aggregator_buffer_size: seconds
         :type aggregator_buffer_size: int
@@ -40,38 +39,41 @@ class MetricsRouter(threading.Thread):
             time.sleep(1)
         logger.info('Router received interrupt signal, routing rest of the data. Qsize: %s',
                     self.manager.routing_queue.qsize())
-        self.__route()
+        self.__route(last_piece=True)
         logger.info('Router finished its work')
         self._finished.set()
 
-    def __from_aggregator_buffer(self, df, buff_size=10):
+    def __from_aggregator_buffer(self, df, metric_id, last_piece):
         # type: (pd.DataFrame) -> pd.DataFrame
-        metric_id = df['metric_local_id']
+        """
+
+        :rtype: pd.DataFrame
+        """
         buf = self.__aggregator_buffer.get(metric_id)
-        df = df.set_index('ts')
-        df['second'] = df.index / 1000000
+        df['second'] = (df['ts'] / 1000000).astype(int)
 
         if buf is not None:
             df = pd.concat([buf, df])
-        cut, new_buf = df[df.second < df.second.max()-buff_size],\
-                       df[df.second >= df.second.max()-buff_size]
-        self.__aggregator_buffer[metric_id] = new_buf
 
-        grouped = cut.groupby('second')
-        a = self.aggregator_buffer_size
-        by_second, buf = (lambda l: (dict(l[:-a]), dict(l[-a:])))(sorted(buf.items(), key=lambda x: x[0]))
-        return by_second
+        if not last_piece:
+            cut, new_buf = df[df.second < df.second.max() - self.aggregator_buffer_size], \
+                           df[df.second >= df.second.max() - self.aggregator_buffer_size]
+            self.__aggregator_buffer[metric_id] = new_buf
+            return cut
+        else:
+            self.__aggregator_buffer[metric_id] = None
+            return df
 
-    def __route(self):
+    def __route(self, last_piece=False):
         routing_buffer = {}
         data = get_nowait_from_queue(self.manager.routing_queue)
-        for df, type_ in data:
-            if type_ == Aggregate.type:
-                by_second = self.__from_aggregator_buffer(df, type_)
-            if type_ in routing_buffer:
-                routing_buffer[type_] = pd.concat([routing_buffer[type_], df], sort=False)
+        for entry in data:
+            if entry.type == Aggregate.type:
+                by_second = self.__from_aggregator_buffer(entry.df, entry.type, last_piece).groupby('second')
+            if entry.type in routing_buffer:
+                routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], entry.df], sort=False)
             else:
-                routing_buffer[type_] = df
+                routing_buffer[entry.type] = entry.df
 
         if self.manager.callbacks.empty:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
