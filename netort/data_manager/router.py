@@ -70,6 +70,7 @@ class MetricsRouter(threading.Thread):
         for entry in data:
             if entry.type == Aggregate.type:
                 by_second = self.__from_aggregator_buffer(entry.df, entry.type, last_piece).groupby('second')
+
             if entry.type in routing_buffer:
                 routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], entry.df], sort=False)
             else:
