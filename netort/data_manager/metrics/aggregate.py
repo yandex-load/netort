@@ -5,17 +5,16 @@ import numpy as np
 import pandas as pd
 
 
-
-
 class Aggregator(object):
     perc_list = [0, 10, 25, 50, 75, 80, 85, 90, 95, 98, 99, 100]
     percentiles = np.array(perc_list)
 
     @classmethod
     def aggregate(cls, by_second):
-        result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
-                                        , orient='index', columns=Aggregate.columns)
-        return df
+        # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
+        #                                 , orient='index', columns=Aggregate.columns)
+
+        return by_second.describe(percentiles=[i/100. for i in cls.perc_list])
 
     @staticmethod
     def _mean(series):
@@ -60,3 +59,8 @@ class Aggregate(AbstractMetric):
     @property
     def type(self):
         return 'aggregates'
+
+    def put(self, df):
+        assert 'ts' in df.columns
+        assert 'value' in df.columns
+        super(Aggregate, self).put(df.loc[:, ['ts', 'value']])

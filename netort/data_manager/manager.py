@@ -235,9 +235,8 @@ class DataManager(object):
             self.callbacks = self.callbacks.append(found_callbacks)
         return metric_obj
 
-    def new_aggregated_metric(self, name, aggregators):
-
-        aggregates = {}
+    def new_aggregated_metric(self, name, group, **kw):
+        pass
 
 
         # for aggregator in aggregators:
