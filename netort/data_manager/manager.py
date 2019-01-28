@@ -5,6 +5,8 @@ import time
 import os
 import pwd
 import six
+from netort.data_manager.metrics import Aggregate
+
 if six.PY3:
     from queue import Queue
 else:  # six.PY2
@@ -79,6 +81,9 @@ class DataSession(object):
 
     def new_tank_metric(self, name, hostname=None, group=None, source=None, **kw):
         return self.manager.new_tank_metric(name, hostname, group, source, **kw)
+
+    def new_aggregated_metric(self, name, group, **kw):
+        return self.manager.new_aggregated_metric(name, group, **kw)
 
     def subscribe(self, callback, filter_):
         return self.manager.subscribe(callback, filter_)
@@ -236,12 +241,13 @@ class DataManager(object):
         return metric_obj
 
     def new_aggregated_metric(self, name, group, **kw):
-        pass
-
-
-        # for aggregator in aggregators:
-        #     for series in aggregator:
-        #         aggregates.setdefault(aggregator, {})[series.name] = self.new_tank_metric()
+        meta = {
+            'type': Aggregate.type,
+            'name': name,
+            'group': group
+        }
+        meta.update(kw)
+        return self.new_metric(meta)
 
     def subscribe(self, callback, filter_):
         """

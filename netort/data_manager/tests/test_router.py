@@ -8,8 +8,8 @@ class TestAggregatorBuffer(object):
 
     def setup_method(self):
         self.metrics_router = MetricsRouter(Mock(DataManager), 5)
-        self.df1 = pd.DataFrame.from_csv('netort/data_manager/tests/df1MetricData.csv')
-        self.df2 = pd.DataFrame.from_csv('netort/data_manager/tests/df2MetricData.csv')
+        self.df1 = pd.read_csv('netort/data_manager/tests/df1MetricData.csv')
+        self.df2 = pd.read_csv('netort/data_manager/tests/df2MetricData.csv')
 
     def test_buffer_last_piece(self):
         res1 = self.metrics_router._MetricsRouter__from_aggregator_buffer(self.df1, 'metric1', False)

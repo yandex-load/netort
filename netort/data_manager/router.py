@@ -4,6 +4,7 @@ import pandas as pd
 import logging
 
 from netort.data_manager.metrics import Aggregate
+from netort.data_manager.metrics.aggregate import Aggregator
 
 from ..data_processing import get_nowait_from_queue
 
@@ -69,12 +70,15 @@ class MetricsRouter(threading.Thread):
         data = get_nowait_from_queue(self.manager.routing_queue)
         for entry in data:
             if entry.type == Aggregate.type:
-                by_second = self.__from_aggregator_buffer(entry.df, entry.type, last_piece).groupby('second')
+                cut = self.__from_aggregator_buffer(entry.df, entry.type, last_piece) #.groupby('second')
+                data = Aggregator.aggregate(cut)
+            else:
+                data = entry.df
 
             if entry.type in routing_buffer:
-                routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], entry.df], sort=False)
+                routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], data], sort=False)
             else:
-                routing_buffer[entry.type] = entry.df
+                routing_buffer[entry.type] = data
 
         if self.manager.callbacks.empty:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')

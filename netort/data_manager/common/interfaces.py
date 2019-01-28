@@ -33,6 +33,9 @@ class MetricData(object):
 
 
 class AbstractMetric(object):
+    VALUE_COL = 'value'
+    TS_COL = 'ts'
+
     def __init__(self, meta, queue_):
         self.local_id = "metric_{uuid}".format(uuid=uuid.uuid4())
         self.dtypes = {}
