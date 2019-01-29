@@ -41,7 +41,6 @@ class AbstractMetric(object):
         self.dtypes = {}
         self.meta = meta
         self.routing_queue = queue_
-        self.columns = []
         self.tag = None
 
     @property
@@ -55,3 +54,4 @@ class AbstractMetric(object):
         # df = df.set_index('metric_local_id')
         data = MetricData(df, self.type, self.local_id)
         self.routing_queue.put(data)
+
