@@ -40,7 +40,7 @@ class LunaClient(AbstractClient):
     upload_metric_path = '/upload_metric/?query='  # production
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
-    dbname = 'luna'
+    dbname = 'luna_test'
     symlink_artifacts_path = 'luna'
 
     def __init__(self, meta, job):
@@ -297,6 +297,8 @@ class WorkerThread(threading.Thread):
         except queue.Empty:
             time.sleep(1)
         else:
+            logger.debug("Luna queue not empty")
+            logger.debug(df.head())
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if not metric:
@@ -305,6 +307,7 @@ class WorkerThread(threading.Thread):
                 if metric.local_id in self.client.public_ids:
                     df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
                     df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
+                    # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
                     body = df_grouped_by_id.to_csv(
                         sep='\t',
                         header=False,
@@ -312,6 +315,8 @@ class WorkerThread(threading.Thread):
                         na_rep='',
                         columns=self.client.luna_columns + metric.columns
                     )
+                    # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
+                    # logger.debug('Body:\n{}'.format(body))
                     req = requests.Request(
                         'POST', "{api}{data_upload_handler}{query}".format(
                             api=self.client.api_address, # production proxy

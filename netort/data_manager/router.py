@@ -72,6 +72,8 @@ class MetricsRouter(threading.Thread):
             if entry.type == Aggregate.type:
                 cut = self.__from_aggregator_buffer(entry.df, entry.type, last_piece) #.groupby('second')
                 data = Aggregator.aggregate(cut)
+                data['metric_local_id'] = entry.local_id
+                data = data.set_index('metric_local_id')
             else:
                 data = entry.df
 
@@ -89,12 +91,13 @@ class MetricsRouter(threading.Thread):
         # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
         for type_ in routing_buffer:
             try:
-                for callback, incoming_chunks in pd.merge(
-                        routing_buffer[type_], self.manager.callbacks,
-                        how='left',
-                        left_index=True,
-                        right_index=True
-                ).groupby('callback', sort=False):
+                router = pd.merge(
+                    routing_buffer[type_], self.manager.callbacks,
+                    how='left',
+                    left_index=True,
+                    right_index=True
+                ).groupby('callback', sort=False)
+                for callback, incoming_chunks in router:
                     # exec_time_start = time.time()
                     callback(incoming_chunks)
                     # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
