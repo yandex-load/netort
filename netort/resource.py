@@ -305,6 +305,7 @@ class HttpStreamWrapper:
     """
 
     def __init__(self, url):
+        self.next = self.__next__
         self.url = url
         self.buffer = ''
         self.pointer = 0
