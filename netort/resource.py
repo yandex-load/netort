@@ -7,7 +7,7 @@ import hashlib
 import serial
 import yaml
 import socket
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse
 from contextlib import closing
 
 logger = logging.getLogger(__name__)
