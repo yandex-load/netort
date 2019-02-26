@@ -1,3 +1,5 @@
+import urlparse
+
 from ..common.interfaces import AbstractClient
 from ..common.util import pretty_print
 
@@ -40,6 +42,7 @@ class LunaClient(AbstractClient):
     upload_metric_path = '/upload_metric/?query='  # production
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
+    close_job_path = '/close_job/'
     dbname = 'luna_test'
     symlink_artifacts_path = 'luna'
 
@@ -135,7 +138,7 @@ class LunaClient(AbstractClient):
             "{api_address}{path}?job={job}".format(
                 api_address=self.api_address,
                 path=self.update_job_path,
-                job=self._job_number
+                job=self.job_number
             ),
         )
         req.data = meta
@@ -169,6 +172,20 @@ class LunaClient(AbstractClient):
             response = send_chunk(self.session, prepared_req)
             logger.debug('Update metric status: %s', response.status_code)
             logger.debug('Answ data: %s', response.content)
+
+    def _close_job(self):
+        req = requests.Request(
+            'GET',
+            "{api_address}{path}".format(
+                api_address=self.api_address,
+                path=self.close_job_path,
+            ),
+            params={'job': self._job_number}
+        )
+        prepared_req = req.prepare()
+        logger.debug('Prepared close_job request:\n%s', pretty_print(prepared_req))
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Update job status: %s', response.status_code)
 
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
@@ -205,6 +222,7 @@ class LunaClient(AbstractClient):
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
+        self._close_job()
         # FIXME hardcored host
         # FIXME we dont know front hostname, because api address now is clickhouse address
         logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
@@ -332,8 +350,14 @@ class WorkerThread(threading.Thread):
                     }
                     req.data = body
                     prepared_req = req.prepare()
+                    # logger.debug('Prepared request: %s' % '{}\n{}\n{}\n\n{}'.format(
+                    #     '-----------START-----------',
+                    #     prepared_req.method + ' ' + prepared_req.url,
+                    #     '\n'.join('{}: {}'.format(k, v) for k, v in prepared_req.headers.items()),
+                    #     prepared_req.body,
+                    # ))
                     try:
-                        send_chunk(self.session, prepared_req)
+                        resp = send_chunk(self.session, prepared_req)
                     except RetryError:
                         logger.warning('Failed to upload data to luna. Dropped some data.')
                         logger.debug(
