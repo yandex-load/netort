@@ -66,6 +66,7 @@ class LunaClient(AbstractClient):
     def job_number(self):
         if self.failed.is_set():
             return
+        # FIXME: job_number should be a property
         if not self._job_number:
             try:
                 self._job_number = self.create_job()

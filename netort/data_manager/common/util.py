@@ -1,6 +1,7 @@
 import collections
 
 
+# TODO: rename to format_http_request
 def pretty_print(req):
     return '{header}\n{query}\n{http_headers}\n\n{body}\n{footer}'.format(
         header='-----------QUERY START-----------',

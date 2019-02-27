@@ -1,3 +1,4 @@
+# TODO: merge with Yandex Tank validator
 import yaml
 import imp
 import pkg_resources

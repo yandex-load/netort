@@ -1,7 +1,7 @@
-import usb1
+# TODO: consider removing this module from library. It is very specific.
 import logging
 import weakref
-
+import usb1
 import libusb1
 
 logger = logging.getLogger(__name__)

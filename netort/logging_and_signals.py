@@ -1,3 +1,9 @@
+"""
+Logging initialization AND signals (but why?!)
+
+TODO:
+    * move signals to another module
+"""
 import logging
 import sys
 import signal
@@ -6,39 +12,56 @@ logger = logging.getLogger(__name__)
 
 
 class SingleLevelFilter(logging.Filter):
-    """Exclude or approve one msg type at a time.    """
+    """Reject or approve one exact debug level. """
 
-    def __init__(self, passlevel, reject):
+    def __init__(self, levelno, reject):
+        """
+        Args:
+            levelno (int): which level do we work with (logging.DEBUG, etc.)
+            reject (bool): remove messages of this level if true, remove all others if false
+        """
         logging.Filter.__init__(self)
-        self.passlevel = passlevel
+        self.levelno = levelno
         self.reject = reject
 
     def filter(self, record):
         if self.reject:
-            return record.levelno != self.passlevel
+            return record.levelno != self.levelno
         else:
-            return record.levelno == self.passlevel
+            return record.levelno == self.levelno
 
 
 def init_logging(log_filename, verbose, quiet):
-    """ Set up logging, as it is very important for console tool """
+    """Set up logging with default parameters:
+    * default console logging level is INFO
+    * ERROR, WARNING and CRITICAL are redirected to stderr
+
+    Args:
+        log_filename (str): if set, will write DEBUG log there
+        verbose (bool): DEBUG level in console, overrides 'quiet'
+        quiet (bool): WARNING level in console
+    """
+    # TODO: consider making one verbosity parameter instead of two mutually exclusive
+    # TODO: default values for parameters
     logger = logging.getLogger('')
     logger.setLevel(logging.DEBUG)
 
-    # create file handler which logs even debug messages
+    # add file handler if needed
     if log_filename:
         file_handler = logging.FileHandler(log_filename)
         file_handler.setLevel(logging.DEBUG)
+        # TODO: initialize all formatters in the beginning of this function
         file_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s"
             ))
         logger.addHandler(file_handler)
 
-    # create console handler with a higher log level
+    # console stdout and stderr handlers
     console_handler = logging.StreamHandler(sys.stdout)
     stderr_hdl = logging.StreamHandler(sys.stderr)
 
+    # formatters
     fmt_verbose = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d\t%(message)s",
         datefmt='%Y-%m-%d,%H:%M:%S.%f'
@@ -46,6 +69,7 @@ def init_logging(log_filename, verbose, quiet):
     fmt_regular = logging.Formatter(
         "%(asctime)s [%(levelname).4s] [%(filename).8s] %(message)s", "%H:%M:%S")
 
+    # set formatters and log levels
     if verbose:
         console_handler.setLevel(logging.DEBUG)
         console_handler.setFormatter(fmt_verbose)
@@ -59,6 +83,8 @@ def init_logging(log_filename, verbose, quiet):
         console_handler.setFormatter(fmt_regular)
         stderr_hdl.setFormatter(fmt_regular)
 
+    # TODO: do we really need these to be redirected?
+    # redirect ERROR, WARNING and CRITICAL to sterr
     f_err = SingleLevelFilter(logging.ERROR, True)
     f_warn = SingleLevelFilter(logging.WARNING, True)
     f_crit = SingleLevelFilter(logging.CRITICAL, True)
@@ -74,7 +100,7 @@ def init_logging(log_filename, verbose, quiet):
     logger.addHandler(stderr_hdl)
 
 
-# ============= signals handler =========
+# TODO: describe what are these for, how to use
 def signal_handler(sig, frame):
     """ required for non-tty python runs to interrupt """
     logger.warning("Got signal %s, going to stop", sig)
