@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='netort',
-    version='0.3.0',
+    version='0.3.1',
     description='common library for yandex-load org',
     longer_description='''
 common library for yandex-load org
@@ -37,6 +37,9 @@ common library for yandex-load org
         'Programming Language :: Python :: 3',
     ],
     entry_points={
+        'console_scripts': [
+            'phout_upload = netort.cli:main',
+        ],
     },
     package_data={
     },

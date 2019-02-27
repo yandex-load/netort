@@ -82,8 +82,8 @@ class DataSession(object):
     def new_tank_metric(self, name, hostname=None, group=None, source=None, **kw):
         return self.manager.new_tank_metric(name, hostname, group, source, **kw)
 
-    def new_aggregated_metric(self, name, group, **kw):
-        return self.manager.new_aggregated_metric(name, group, **kw)
+    def new_aggregated_metric(self, name, **kw):
+        return self.manager.new_aggregated_metric(name, **kw)
 
     def subscribe(self, callback, filter_):
         return self.manager.subscribe(callback, filter_)
@@ -240,11 +240,11 @@ class DataManager(object):
             self.callbacks = self.callbacks.append(found_callbacks)
         return metric_obj
 
-    def new_aggregated_metric(self, name, group, **kw):
+    def new_aggregated_metric(self, name, **kw):
         meta = {
             'type': Aggregate.type,
             'name': name,
-            'group': group
+            # 'group': group
         }
         meta.update(kw)
         return self.new_metric(meta)

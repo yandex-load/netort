@@ -40,6 +40,8 @@ class MetricsRouter(threading.Thread):
             time.sleep(1)
         logger.info('Router received interrupt signal, routing rest of the data. Qsize: %s',
                     self.manager.routing_queue.qsize())
+        while self.manager.routing_queue.qsize() > 1:
+            self.__route()
         self.__route(last_piece=True)
         logger.info('Router finished its work')
         self._finished.set()
@@ -100,6 +102,7 @@ class MetricsRouter(threading.Thread):
                 for callback, incoming_chunks in router:
                     # exec_time_start = time.time()
                     callback(incoming_chunks)
+                    logger.debug('Callback to {}'.format(callback))
                     # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
             except TypeError:
                 logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',

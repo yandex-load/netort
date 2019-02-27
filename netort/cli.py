@@ -8,11 +8,10 @@ import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 
-def get_uploader(data_session, column_mapping, group_tags=False):
+def get_uploader(data_session, column_mapping, overall_only=False):
     """
     :type data_session: DataSession
     """
-    _router = {}
 
     def get_router(tags):
         """
@@ -20,26 +19,27 @@ def get_uploader(data_session, column_mapping, group_tags=False):
         :param tags:
         :return: {'%tag': {'%column_name': metric_object(name, group)}}
         """
-        if set(tags) - set(_router.keys()):
-            [_router.setdefault(tag,
-                                {col_name:
-                                     data_session.new_aggregated_metric(name,
-                                                                        group if group_tags else group + '-' + tag)
-                                 for col_name, (name, group) in column_mapping.items()})
-             for tag in tags]
-        return _router
+        router = {tag: {col_name: data_session.new_aggregated_metric(name + '-' + tag)
+               for col_name, name in column_mapping.items()} if not overall_only else {}
+         for tag in tags}
+        overall = {col_name: data_session.new_aggregated_metric(name + ' overall')
+                        for col_name, name in column_mapping.items()}
+        return router, overall
 
     def upload_df(df):
-        router = get_router(df.tag.unique().tolist())
-        for tag, df_tagged in df.groupby('tag'):
-            for col_name, metric in router[tag].items():
-                df_tagged['value'] = df_tagged[col_name]
-                metric.put(df_tagged)
-
+        router, overall = get_router(df.tag.unique().tolist())
+        if len(router) > 0:
+            for tag, df_tagged in df.groupby('tag'):
+                for col_name, metric in router[tag].items():
+                    df_tagged['value'] = df_tagged[col_name]
+                    metric.put(df_tagged)
+        for col_name, metric in overall.items():
+            df['value'] = df[col_name]
+            metric.put(df)
     return upload_df
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Process phantom output.')
     parser.add_argument('phout', type=str, help='path to phantom output file')
     parser.add_argument('--url', type=str, default='https://volta-back-testing.common-int.yandex-team.ru/')
@@ -53,15 +53,18 @@ if __name__ == '__main__':
     # col_map = {name: (name, 'fractions') for name in ['connect_time', 'send_time',
     #            'latency', 'receive_time',
     #            'interval_event']}
-    col_map_aggr = {name: ('metric %s' % name, 'group %s' % name) for name in
-                    ['connect_time', 'send_time', 'latency',
+    col_map_aggr = {name: 'metric %s' % name for name in
+                    ['interval_real', 'connect_time', 'send_time', 'latency',
                      'receive_time', 'interval_event']}
-    uploader = get_uploader(data_session, col_map_aggr, group_tags=False)
+    uploader = get_uploader(data_session, col_map_aggr, True)
 
-    with open('/Users/fomars/dev/netort/tmp/phout_tagged.log') as f:
+    with open(args.phout) as f:
         chunk = f.read()
     df = string_to_df_microsec(chunk)
     uploader(df)
     data_session.close()
 
     # <type 'list'>: ['848f1769e16843f49d4f1b5b43c26124', '700b9fbb626c492b8fe16793ba659561', '4c22258a07984acfaf92d67e13c050a2', '1c3f1af845b842e7ae63554f74c89661', '17b8fd1da726452ba6abb9261a09d53f']
+
+if __name__ == '__main__':
+    main()
