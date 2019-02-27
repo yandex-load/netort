@@ -86,6 +86,7 @@ class LunaClient(AbstractClient):
     def put(self, df):
         if not self.failed.is_set():
             self.pending_queue.put(df)
+            logger.debug('Put df to luna queue')
         else:
             logger.debug('Skipped incoming data chunk due to failures')
 
@@ -303,7 +304,7 @@ class WorkerThread(threading.Thread):
         logger.info(
             'Luna uploader finishing work and '
             'trying to send the rest of data, qsize: %s', self.client.pending_queue.qsize())
-        while self.client.pending_queue.qsize() > 1:
+        while self.client.pending_queue.qsize() > 0:
             self.__process_pending_queue()
         self._finished.set()
 
@@ -315,7 +316,7 @@ class WorkerThread(threading.Thread):
         except queue.Empty:
             time.sleep(1)
         else:
-            logger.debug("Luna queue not empty")
+            logger.debug("Got df from luna queue")
             logger.debug(df.head())
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)

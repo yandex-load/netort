@@ -37,6 +37,9 @@ common library for yandex-load org
         'Programming Language :: Python :: 3',
     ],
     entry_points={
+        'console_scripts': [
+            'phout_upload = netort.cli:main',
+        ],
     },
     package_data={
     },
