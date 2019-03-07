@@ -7,14 +7,15 @@ import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
-def get_uploader(data_session, column_mapping, group_tags=False):
+def get_uploader(data_session, column_mapping, overall_only=False):
     """
     :type data_session: DataSession
     """
     _router = {}
-    _overall = {}
+    _overall = {col_name: data_session.new_aggregated_metric(name + ' overall')
+                for col_name, name in column_mapping.items()}
 
-    def get_router(tags, column_mapping, overall_only=False):
+    def get_router(tags):
         """
 
         :param tags:
@@ -26,53 +27,23 @@ def get_uploader(data_session, column_mapping, group_tags=False):
                                  for col_name, name in column_mapping.items()} if not overall_only else {}
                                 )
              for tag in tags]
-        if len(_overall) == 0:
-            _overall = {col_name: data_session.new_aggregated_metric(name + ' overall')
-                   for col_name, name in column_mapping.items()}
         return _router
 
+    def upload_overall(df):
+        for col_name, metric in _overall.items():
+            df['value'] = df[col_name]
+            metric.put(df)
+
     def upload_df(df):
-        router, overall = get_router(df.tag.unique().tolist())
+        router = get_router(df.tag.unique().tolist())
         if len(router) > 0:
             for tag, df_tagged in df.groupby('tag'):
                 for col_name, metric in router[tag].items():
                     df_tagged['value'] = df_tagged[col_name]
                     metric.put(df_tagged)
-        for col_name, metric in overall.items():
-            df['value'] = df[col_name]
-            metric.put(df)
-    return upload_df
+        upload_overall(df)
 
-
-def get_uploader(data_session, column_mapping, overall_only=False):
-    """
-    :type data_session: DataSession
-    """
-
-    def get_router(tags):
-        """
-
-        :param tags:
-        :return: {'%tag': {'%column_name': metric_object(name, group)}}
-        """
-        router = {tag: {col_name: data_session.new_aggregated_metric(name + '-' + tag)
-               for col_name, name in column_mapping.items()} if not overall_only else {}
-         for tag in tags}
-        overall = {col_name: data_session.new_aggregated_metric(name + ' overall')
-                        for col_name, name in column_mapping.items()}
-        return router, overall
-
-    def upload_df(df):
-        router, overall = get_router(df.tag.unique().tolist())
-        if len(router) > 0:
-            for tag, df_tagged in df.groupby('tag'):
-                for col_name, metric in router[tag].items():
-                    df_tagged['value'] = df_tagged[col_name]
-                    metric.put(df_tagged)
-        for col_name, metric in overall.items():
-            df['value'] = df[col_name]
-            metric.put(df)
-    return upload_df
+    return upload_overall if overall_only else upload_df
 
 
 def main():
