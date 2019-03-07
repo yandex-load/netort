@@ -69,13 +69,16 @@ class MetricsRouter(threading.Thread):
 
     def __route(self, last_piece=False):
         routing_buffer = {}
-        data = get_nowait_from_queue(self.manager.routing_queue)
-        for entry in data:
+        all_data = get_nowait_from_queue(self.manager.routing_queue)
+        for entry in all_data:
             if entry.type == Aggregate.type:
-                cut = self.__from_aggregator_buffer(entry.df, entry.type, last_piece) #.groupby('second')
-                data = Aggregator.aggregate(cut)
-                data['metric_local_id'] = entry.local_id
-                data = data.set_index('metric_local_id')
+                cut = self.__from_aggregator_buffer(entry.df, entry.local_id, last_piece) #.groupby('second')
+                if cut.empty:
+                    continue
+                else:
+                    data = Aggregator.aggregate(cut)
+                    data['metric_local_id'] = entry.local_id
+                    data = data.set_index('metric_local_id')
             else:
                 data = entry.df
 
@@ -83,6 +86,15 @@ class MetricsRouter(threading.Thread):
                 routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], data], sort=False)
             else:
                 routing_buffer[entry.type] = data
+        if last_piece:
+            for metric_id, df in self.__aggregator_buffer.items():
+                data = Aggregator.aggregate(df)
+                data['metric_local_id'] = metric_id
+                data = data.set_index('metric_local_id')
+                if Aggregate.type in routing_buffer:
+                    routing_buffer[Aggregate.type] = pd.concat([routing_buffer[Aggregate.type], data], sort=False)
+                else:
+                    routing_buffer[Aggregate.type] = data
 
         if self.manager.callbacks.empty:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
