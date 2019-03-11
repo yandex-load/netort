@@ -56,8 +56,8 @@ class Aggregate(AbstractMetric):
 
     def put(self, df):
         if self._start_ts is None:
-            self._start_ts = df["ts"][0]
-        df['ts'] -= df["ts"][0]
+            self._start_ts = df["ts"].iloc[0]
+        df["ts"] -= self._start_ts
         assert AbstractMetric.TS_COL in df.columns
         assert AbstractMetric.VALUE_COL in df.columns
         super(Aggregate, self).put(df.loc[:, [AbstractMetric.TS_COL, AbstractMetric.VALUE_COL]])

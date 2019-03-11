@@ -1,5 +1,3 @@
-import urlparse
-
 from ..common.interfaces import AbstractClient
 from ..common.util import pretty_print
 

@@ -82,6 +82,7 @@ class DataSession(object):
     def new_tank_metric(self, name, hostname=None, group=None, source=None, **kw):
         return self.manager.new_tank_metric(name, hostname, group, source, **kw)
 
+    # FIXME: if dict is passed instead of str to name, test will break
     def new_aggregated_metric(self, name, **kw):
         return self.manager.new_aggregated_metric(name, **kw)
 
