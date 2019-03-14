@@ -41,12 +41,12 @@ class LunaClient(AbstractClient):
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
     close_job_path = '/close_job/'
-    dbname = 'luna_test'
     symlink_artifacts_path = 'luna'
 
     def __init__(self, meta, job):
         super(LunaClient, self).__init__(meta, job)
         logger.debug('Luna client local id: %s', self.local_id)
+        self.dbname = meta.get('db_name', 'luna')
         self.failed = threading.Event()
         self.public_ids = {}
         self.luna_columns = ['key_date', 'tag']
