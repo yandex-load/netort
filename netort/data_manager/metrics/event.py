@@ -1,4 +1,4 @@
-from ..common.interfaces import AbstractMetric
+from ..common.interfaces import AbstractMetric, TypeEvents, TypeHistogram
 import numpy as np
 
 
@@ -13,4 +13,8 @@ class Event(AbstractMetric):
 
     @property
     def type(self):
-        return 'events'
+        return TypeEvents
+
+    @property
+    def aggregate_types(self):
+        return [TypeHistogram]

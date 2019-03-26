@@ -1,4 +1,4 @@
-from ..common.interfaces import AbstractMetric
+from ..common.interfaces import AbstractMetric, TypeTimeSeries, TypeQuantiles, TypeDistribution
 import numpy as np
 
 
@@ -13,4 +13,8 @@ class Metric(AbstractMetric):
 
     @property
     def type(self):
-        return 'metrics'
+        return TypeTimeSeries
+
+    @property
+    def aggregate_types(self):
+        return [TypeQuantiles, TypeDistribution]
