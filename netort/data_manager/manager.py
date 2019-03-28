@@ -5,7 +5,7 @@ import time
 import os
 import pwd
 import six
-from netort.data_manager.metrics import Aggregate
+from netort.data_manager.metrics import Aggregate, Metric
 
 if six.PY3:
     from queue import Queue
@@ -79,8 +79,8 @@ class DataSession(object):
     def new_metric(self, meta):
         return self.manager.new_metric(meta)
 
-    def new_tank_metric(self, name, hostname=None, group=None, source=None, **kw):
-        return self.manager.new_tank_metric(name, hostname, group, source, **kw)
+    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
+        return self.manager.new_true_metric(name, raw, aggregate, **kw)
 
     # FIXME: if dict is passed instead of str to name, test will break
     def new_aggregated_metric(self, name, **kw):
@@ -157,7 +157,7 @@ class DataManager(object):
     MetricsRouter is a facility that DataManager uses for passing incoming data to subscribers.
 
     Attributes:
-        metrics (list): All registered metrics for DataManager session
+        metrics (dict): All registered metrics for DataManager session
         subscribers (pd.DataFrame): All registered subscribers for DataManager session
         callbacks (pd.DataFrame): callbacks for metric ids <-> subscribers' callbacks, used by router
         routing_queue (Queue): incoming unrouted metrics data,
@@ -207,7 +207,7 @@ class DataManager(object):
         else:
             raise NotImplementedError('Unknown metric type: %s' % type_)
 
-    def new_tank_metric(self, name, hostname=None, group=None, source=None, **kw):
+    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -217,13 +217,11 @@ class DataManager(object):
         """
 
         metric_info = {'type': 'metrics',
-                       'source': source,
                        'name': name,
-                       'hostname': hostname,
-                       'group': group}
-        metric_obj = available_metrics['metrics'](metric_info, self.routing_queue)  # create metric object
+                       }
         if kw is not None:
             metric_info.update(kw)
+        metric_obj = Metric(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
         self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object

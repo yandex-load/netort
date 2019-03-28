@@ -3,9 +3,10 @@ import time
 import pandas as pd
 import logging
 
+from netort.data_manager.common.interfaces import Aggregated
 from netort.data_manager.metrics import Aggregate
 from netort.data_manager.metrics.aggregate import Aggregator
-
+from functools import reduce
 from ..data_processing import get_nowait_from_queue
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class MetricsRouter(threading.Thread):
         """
         :param aggregator_buffer_size: seconds
         :type aggregator_buffer_size: int
-        :type manager: DataManager
+        :type manager: netort.data_manager.DataManager
         """
         super(MetricsRouter, self).__init__()
         self.aggregator_buffer_size = aggregator_buffer_size
@@ -30,7 +31,7 @@ class MetricsRouter(threading.Thread):
         self._finished = threading.Event()
         self._interrupted = threading.Event()
         self.setDaemon(True)  # just in case, bdk+ytank stuck w/o this at join of Drain thread
-        self.__aggregator_buffer = {}
+        self.__buffer = {}
 
     def run(self):
         while not self._interrupted.is_set():
@@ -46,67 +47,63 @@ class MetricsRouter(threading.Thread):
         logger.info('Router finished its work')
         self._finished.set()
 
-    def __from_aggregator_buffer(self, df, metric_id, last_piece):
-        # type: (pd.DataFrame) -> pd.DataFrame
+    def _from_buffer(self, metric_data, last_piece):
         """
-
+        :type metric_data: netort.data_manager.common.interfaces.MetricData
         :rtype: pd.DataFrame
         """
-        buf = self.__aggregator_buffer.get(metric_id)
-        df['second'] = (df['ts'] / 1000000).astype(int)
 
-        if buf is not None:
-            df = pd.concat([buf, df])
-
+        buffered = self.__buffer.get(metric_data.local_id)
+        df = pd.concat([buffered, metric_data.df]) if buffered is not None else metric_data.df
         if not last_piece:
-            cut, new_buf = df[df.second < df.second.max() - self.aggregator_buffer_size], \
-                           df[df.second >= df.second.max() - self.aggregator_buffer_size]
-            self.__aggregator_buffer[metric_id] = new_buf
+            cut, new_buf = df[df.second < df.second.max() - Aggregated.buffer_size], \
+                           df[df.second >= df.second.max() - Aggregated.buffer_size]
+            self.__buffer[metric_data.local_id] = new_buf
             return cut
         else:
-            self.__aggregator_buffer[metric_id] = None
+            self.__buffer[metric_data.local_id] = None
             return df
 
     def __route(self, last_piece=False):
-        routing_buffer = {}
         all_data = get_nowait_from_queue(self.manager.routing_queue)
-        for entry in all_data:
-            if entry.type == Aggregate.type:
-                cut = self.__from_aggregator_buffer(entry.df, entry.local_id, last_piece) #.groupby('second')
-                if cut.empty:
-                    continue
-                else:
-                    data = Aggregator.aggregate(cut)
-                    data['metric_local_id'] = entry.local_id
-                    data = data.set_index('metric_local_id')
-            else:
-                data = entry.df
 
-            if entry.type in routing_buffer:
-                routing_buffer[entry.type] = pd.concat([routing_buffer[entry.type], data], sort=False)
-            else:
-                routing_buffer[entry.type] = data
+        routed_data = {}
+        for metric_data in all_data:
+            if metric_data.is_aggregated:
+                from_buffer = self._from_buffer(metric_data, last_piece)
+            for dtype in metric_data.data_types:
+                processed = self.reindex_to_local_id(
+                    dtype.processor(from_buffer if dtype.is_aggregated() else metric_data.df,
+                                    last_piece),
+                    metric_data.local_id)
+                if not processed.empty:
+                    routed_data.setdefault(dtype, []).append(
+                        processed
+                    )
         if last_piece:
-            for metric_id, df in self.__aggregator_buffer.items():
-                data = Aggregator.aggregate(df)
-                data['metric_local_id'] = metric_id
-                data = data.set_index('metric_local_id')
-                if Aggregate.type in routing_buffer:
-                    routing_buffer[Aggregate.type] = pd.concat([routing_buffer[Aggregate.type], data], sort=False)
-                else:
-                    routing_buffer[Aggregate.type] = data
-
+            for metric_local_id, df in self.__buffer.items():
+                d_types = self.manager.metrics[metric_local_id].data_types
+                for d_type in [dt for dt in d_types if dt.is_aggregated()]:
+                    processed = self.reindex_to_local_id(
+                        d_type.processor(df, last_piece),
+                        metric_local_id
+                    )
+                    routed_data.setdefault(d_type, []).append(
+                        processed
+                    )
+        routed_data = {
+            dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()
+        }
         if self.manager.callbacks.empty:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
             time.sleep(1)
             return
-
         # (for each metric type)
         # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
-        for type_ in routing_buffer:
+        for type_ in routed_data:
             try:
                 router = pd.merge(
-                    routing_buffer[type_], self.manager.callbacks,
+                    routed_data[type_], self.manager.callbacks,
                     how='left',
                     left_index=True,
                     right_index=True
@@ -118,7 +115,12 @@ class MetricsRouter(threading.Thread):
                     # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
             except TypeError:
                 logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
-                             type_, routing_buffer[type_], exc_info=True)
+                             type_, routed_data[type_], exc_info=True)
+
+    @staticmethod
+    def reindex_to_local_id(df, local_id):
+        df['metric_local_id'] = local_id
+        return df.set_index('metric_local_id')
 
     def wait(self, timeout=None):
         self._finished.wait(timeout=timeout)

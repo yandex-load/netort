@@ -1,16 +1,35 @@
 # coding=utf-8
+import pandas as pd
 import queue
 import uuid
 import numpy as np
 
 
+class Aggregated(object):
+    buffer_size = 10  # seconds
+
+    @classmethod
+    def is_aggregated(cls):
+        return True
+
+
 class DataType(object):
     table_name = ''
     col_names = []
+    is_aggregated = False
 
     @classmethod
-    def processor(cls, x, **kw):
-        return x
+    def processor(cls, df, last_piece):
+        """
+        :type df: pandas.DataFrame
+        :type last_piece: bool
+        :rtype: pandas.DataFrame
+        """
+        return df
+
+    @classmethod
+    def is_aggregated(cls):
+        return False
 
 
 class TypeTimeSeries(DataType):
@@ -23,7 +42,7 @@ class TypeEvents(DataType):
     col_names = ['ts', 'value']
 
 
-class TypeQuantiles(DataType):
+class TypeQuantiles(Aggregated, DataType):
     perc_list = [0, 10, 25, 50, 75, 80, 85, 90, 95, 98, 99, 100]
     qlist = ['q%d' % n for n in perc_list]
     rename = {'mean': 'average', 'std': 'stddev', '0%': 'q0', '10%': 'q10', '25%': 'q25',
@@ -32,9 +51,11 @@ class TypeQuantiles(DataType):
 
     table_name = 'aggregates'
     col_names = ['ts'] + qlist + ['average', 'stddev']
+    __aggregator_buffer = {}
+    aggregator_buffer_size = 10
 
     @classmethod
-    def processor(cls, df, groupby='second'):
+    def processor(cls, df, last_piece, groupby='second'):
         # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
         #                                 , orient='index', columns=Aggregate.columns)
         df = df.set_index(groupby)
@@ -46,7 +67,7 @@ class TypeQuantiles(DataType):
         return res
 
 
-class TypeDistribution(DataType):
+class TypeDistribution(Aggregated, DataType):
     table_name = 'distributions'
     col_names = ['ts', 'l', 'r', 'cnt']
     DEFAULT_BINS = np.concatenate((
@@ -61,26 +82,25 @@ class TypeDistribution(DataType):
     ))
 
     @classmethod
-    def processor(cls, series, bins=DEFAULT_BINS):
-        data, bins = np.histogram(series, bins=bins)
-        mask = data > 0
-        return {
-            "data": [e.item() for e in data[mask]],
-            "bins": [e.item() for e in bins[1:][mask]],
-        }
+    def processor(cls, df, last_piece, bins=DEFAULT_BINS, groupby='second'):
+        df = df.set_index(groupby)
+        series = df['interval_real']
+        data = {ts: np.histogram(s, bins=bins) for ts, s in series.groupby(series.index)}
+        # data, bins = np.histogram(series, bins=bins)
+        result = pd.concat(
+            [pd.DataFrame.from_dict(
+                {'l': bins[:-1],
+                 'r': bins[1:],
+                 'cnt': data,
+                 'ts': ts}
+            ).query('cnt > 0') for ts, (data, bins) in data.items()]
+        )
+        return result
 
 
-class TypeHistogram(DataType):
+class TypeHistogram(Aggregated, DataType):
     table_name = 'histograms'
     col_names = ['ts', 'category', 'cnt']
-
-#
-# class DataType(Enum):
-#     raw_metric = 'metrics'
-#     raw_events = 'events'
-#     quantiles = 'aggregates'
-#     distribution = 'distributions'
-#     histograms = 'histograms'
 
 
 class AbstractClient(object):
@@ -114,9 +134,15 @@ class MetricData(object):
         """
         df['metric_local_id'] = local_id
         df = df.set_index('metric_local_id')
-        self.df = df
-        self.types = data_types[0]
+        self.data_types = data_types
         self.local_id = local_id
+        if self.is_aggregated:
+            df['second'] = (df['ts'] / 1000000).astype(int)
+        self.df = df
+
+    @property
+    def is_aggregated(self):
+        return any([dtype.is_aggregated() for dtype in self.data_types])
 
 
 class AbstractMetric(object):

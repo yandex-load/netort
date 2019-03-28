@@ -12,7 +12,9 @@ def get_uploader(data_session, column_mapping, overall_only=False):
     :type data_session: DataSession
     """
     _router = {}
-    _overall = {col_name: data_session.new_aggregated_metric(name + ' overall')
+    _overall = {col_name: data_session.new_true_metric(name + ' overall',
+                                                       raw=False,
+                                                       aggregate=True)
                 for col_name, name in column_mapping.items()}
 
     def get_router(tags):
@@ -23,7 +25,9 @@ def get_uploader(data_session, column_mapping, overall_only=False):
         """
         if set(tags) - set(_router.keys()):
             [_router.setdefault(tag,
-                                {col_name: data_session.new_aggregated_metric(name + '-' + tag)
+                                {col_name: data_session.new_true_metric(name + '-' + tag,
+                                                                        raw=False,
+                                                                        aggregate=True)
                                  for col_name, name in column_mapping.items()} if not overall_only else {}
                                 )
              for tag in tags]
