@@ -55,9 +55,10 @@ def main():
     parser.add_argument('phout', type=str, help='path to phantom output file')
     parser.add_argument('--url', type=str, default='https://volta-back-testing.common-int.yandex-team.ru/')
     parser.add_argument('--name', type=str, help='test name', default=str(datetime.utcnow()))
+    parser.add_argument('--db_name', type=str, help='ClickHouse database name', default='luna_test')
     args = parser.parse_args()
 
-    clients = [{'type': 'luna', 'api_address': args.url}]
+    clients = [{'type': 'luna', 'api_address': args.url, 'db_name': args.db_name}]
     data_session = DataSession({'clients': clients})
     data_session.update_job({'name': args.name})
     print('Test name: %s' % args.name)

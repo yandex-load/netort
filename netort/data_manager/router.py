@@ -100,22 +100,22 @@ class MetricsRouter(threading.Thread):
             return
         # (for each metric type)
         # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
-        for type_ in routed_data:
+        for data_type in routed_data:
             try:
                 router = pd.merge(
-                    routed_data[type_], self.manager.callbacks,
+                    routed_data[data_type], self.manager.callbacks,
                     how='left',
                     left_index=True,
                     right_index=True
                 ).groupby('callback', sort=False)
                 for callback, incoming_chunks in router:
                     # exec_time_start = time.time()
-                    callback(incoming_chunks)
+                    callback(data_type, incoming_chunks)
                     logger.debug('Callback to {}'.format(callback))
                     # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
             except TypeError:
                 logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
-                             type_, routed_data[type_], exc_info=True)
+                             data_type, routed_data[data_type], exc_info=True)
 
     @staticmethod
     def reindex_to_local_id(df, local_id):

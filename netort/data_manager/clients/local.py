@@ -60,9 +60,9 @@ class LocalStorageClient(AbstractClient):
         self.processing_thread.setDaemon(True)
         self.processing_thread.start()
 
-    def put(self, df):
+    def put(self, data_type, df):
         if df is not None:
-            self.pending_queue.put(df)
+            self.pending_queue.put((data_type, df))
 
     def close(self):
         self.processing_thread.stop()

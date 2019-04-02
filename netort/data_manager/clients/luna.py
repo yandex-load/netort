@@ -1,3 +1,5 @@
+from requests import HTTPError
+
 from ..common.interfaces import AbstractClient
 from ..common.util import pretty_print
 
@@ -30,7 +32,6 @@ RETRY_ARGS = dict(
 def send_chunk(session, req, timeout=5):
     r = session.send(req, verify=False, timeout=timeout)
     logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
-    r.raise_for_status()
     return r
 
 
@@ -81,9 +82,9 @@ class LunaClient(AbstractClient):
         else:
             return self._job_number
 
-    def put(self, df):
+    def put(self, data_type, df):
         if not self.failed.is_set():
-            self.pending_queue.put(df)
+            self.pending_queue.put((data_type, df))
             logger.debug('Put df to luna queue')
         else:
             logger.debug('Skipped incoming data chunk due to failures')
@@ -309,13 +310,10 @@ class WorkerThread(threading.Thread):
     def __process_pending_queue(self):
         exec_time_start = time.time()
         try:
-            incoming_df = self.client.pending_queue.get_nowait()
-            df = incoming_df.copy()
+            data_type, df = self.client.pending_queue.get_nowait()
         except queue.Empty:
             time.sleep(1)
         else:
-            logger.debug("Got df from luna queue")
-            logger.debug(df.head())
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
                 if not metric:
@@ -330,7 +328,7 @@ class WorkerThread(threading.Thread):
                         header=False,
                         index=False,
                         na_rep='',
-                        columns=self.client.luna_columns + metric.columns
+                        columns=self.client.luna_columns + data_type.columns
                     )
                     # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
                     # logger.debug('Body:\n{}'.format(body))
@@ -339,7 +337,7 @@ class WorkerThread(threading.Thread):
                             api=self.client.api_address, # production proxy
                             data_upload_handler=self.client.upload_metric_path,
                             query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
+                                table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
                             )
                         )
                     )
@@ -357,11 +355,13 @@ class WorkerThread(threading.Thread):
                     # ))
                     try:
                         resp = send_chunk(self.session, prepared_req)
-                    except RetryError:
-                        logger.warning('Failed to upload data to luna. Dropped some data.')
+                        resp.raise_for_status()
+                    except (RetryError, HTTPError) as e:
+                        logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
+                                       format(resp.content if isinstance(e, HTTPError) else 'no response'))
                         logger.debug(
                             'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data: \n%s', df_grouped_by_id, exc_info=True
+                            'Dropped data head: \n%s', df_grouped_by_id.head(), exc_info=True
                         )
                         return
                 else:

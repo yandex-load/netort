@@ -15,7 +15,7 @@ class Aggregated(object):
 
 class DataType(object):
     table_name = ''
-    col_names = []
+    columns = []
     is_aggregated = False
 
     @classmethod
@@ -34,12 +34,12 @@ class DataType(object):
 
 class TypeTimeSeries(DataType):
     table_name = 'metrics'
-    col_names = ['ts', 'value']
+    columns = ['ts', 'value']
 
 
 class TypeEvents(DataType):
     table_name = 'events'
-    col_names = ['ts', 'value']
+    columns = ['ts', 'value']
 
 
 class TypeQuantiles(Aggregated, DataType):
@@ -50,7 +50,7 @@ class TypeQuantiles(Aggregated, DataType):
               '95%': 'q95', '98%': 'q98', '99%': 'q99', '100%': 'q100', }
 
     table_name = 'aggregates'
-    col_names = ['ts'] + qlist + ['average', 'stddev']
+    columns = ['ts'] + qlist + ['average', 'stddev']
     __aggregator_buffer = {}
     aggregator_buffer_size = 10
 
@@ -69,16 +69,16 @@ class TypeQuantiles(Aggregated, DataType):
 
 class TypeDistribution(Aggregated, DataType):
     table_name = 'distributions'
-    col_names = ['ts', 'l', 'r', 'cnt']
+    columns = ['ts', 'l', 'r', 'cnt']
     DEFAULT_BINS = np.concatenate((
-        np.linspace(0, 4990, 500),  # 10µs accuracy
-        np.linspace(5000, 9900, 50),  # 100µs accuracy
-        np.linspace(10, 499, 490) * 1000,  # 1ms accuracy
-        np.linspace(500, 2995, 500) * 1000,  # 5ms accuracy
-        np.linspace(3000, 9990, 700) * 1000,  # 10ms accuracy
-        np.linspace(10000, 29950, 400) * 1000,  # 50ms accuracy
-        np.linspace(30000, 119900, 900) * 1000,  # 100ms accuracy
-        np.linspace(120, 300, 181) * 1000000  # 1s accuracy
+        np.linspace(0, 4990, 500, dtype=int),  # 10µs accuracy
+        np.linspace(5000, 9900, 50, dtype=int),  # 100µs accuracy
+        np.linspace(10, 499, 490, dtype=int) * 1000,  # 1ms accuracy
+        np.linspace(500, 2995, 500, dtype=int) * 1000,  # 5ms accuracy
+        np.linspace(3000, 9990, 700, dtype=int) * 1000,  # 10ms accuracy
+        np.linspace(10000, 29950, 400, dtype=int) * 1000,  # 50ms accuracy
+        np.linspace(30000, 119900, 900, dtype=int) * 1000,  # 100ms accuracy
+        np.linspace(120, 300, 181, dtype=int) * 1000000  # 1s accuracy
     ))
 
     @classmethod
@@ -100,7 +100,7 @@ class TypeDistribution(Aggregated, DataType):
 
 class TypeHistogram(Aggregated, DataType):
     table_name = 'histograms'
-    col_names = ['ts', 'category', 'cnt']
+    columns = ['ts', 'category', 'cnt']
 
 
 class AbstractClient(object):
@@ -114,8 +114,8 @@ class AbstractClient(object):
     def subscribe(self, metric):
         self.pending_metrics.append(metric)
 
-    def put(self, df):
-        self.pending_queue.put(df)
+    def put(self, data_type, df):
+        self.pending_queue.put((data_type, df))
 
     def update_job(self, meta):
         pass
