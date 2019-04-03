@@ -232,6 +232,9 @@ class LunaClient(AbstractClient):
 class RegisterWorkerThread(threading.Thread):
     """ Register metrics metadata, get public_id from luna and create map local_id <-> public_id """
     def __init__(self, client):
+        """
+        :type client: LunaClient
+        """
         super(RegisterWorkerThread, self).__init__()
         self._finished = threading.Event()
         self._interrupted = threading.Event()
@@ -257,23 +260,23 @@ class RegisterWorkerThread(threading.Thread):
         self._finished.set()
 
     def register_metric(self, metric):
+        json = {
+            'job': self.client.job_number,
+            'type': metric.type.table_name,
+            'types': [t.table_name for t in metric.data_types],
+            'local_id': metric.local_id,
+        }
+        json.update(metric.meta)
         req = requests.Request(
             'POST',
             "{api_address}{path}".format(
                 api_address=self.client.api_address,
                 path=self.client.create_metric_path
-            )
-            # not json handler anymore
-            # headers = {"Content-Type": "application/json"}
+            ),
+            json=json
         )
-        req.data = {
-            'job': self.client.job_number,
-            'type': metric.type,
-            'local_id': metric.local_id
-        }
-        req.data.update(metric.meta)
         prepared_req = req.prepare()
-        logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
+        logger.debug('Prepared create_metric request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
         if not response.content:
             logger.debug('Luna did not return uniq_id for metric registration: %s', response.content)

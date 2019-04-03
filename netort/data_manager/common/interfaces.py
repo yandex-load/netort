@@ -174,6 +174,9 @@ class AbstractMetric(object):
 
     @property
     def data_types(self):
+        """
+        :rtype: list of DataType
+        """
         return [self.type] * self.raw + self.aggregate_types * self.aggregate
 
     def put(self, df):
