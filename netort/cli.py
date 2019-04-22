@@ -7,6 +7,7 @@ import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
+
 def get_uploader(data_session, column_mapping, overall_only=False):
     """
     :type data_session: DataSession
