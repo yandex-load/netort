@@ -1,4 +1,6 @@
 # coding=utf-8
+from collections import Counter
+
 import pandas as pd
 import queue
 import uuid
@@ -84,7 +86,7 @@ class TypeDistribution(Aggregated, DataType):
     @classmethod
     def processor(cls, df, last_piece, bins=DEFAULT_BINS, groupby='second'):
         df = df.set_index(groupby)
-        series = df['interval_real']
+        series = df.loc[:, AbstractMetric.VALUE_COL]
         data = {ts: np.histogram(s, bins=bins) for ts, s in series.groupby(series.index)}
         # data, bins = np.histogram(series, bins=bins)
         result = pd.concat(
@@ -101,6 +103,14 @@ class TypeDistribution(Aggregated, DataType):
 class TypeHistogram(Aggregated, DataType):
     table_name = 'histograms'
     columns = ['ts', 'category', 'cnt']
+
+    @classmethod
+    def processor(cls, df, last_piece, groupby='second'):
+        df = df.set_index(groupby)
+        series = df.loc[:, AbstractMetric.VALUE_COL]
+        data = series.groupby([series.index, series.values]).size().reset_index().\
+            rename(columns={'second':'ts', 'level_1': 'category', 'value': 'cnt'})
+        return data
 
 
 class AbstractClient(object):
