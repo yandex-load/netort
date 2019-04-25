@@ -29,6 +29,7 @@ class Aggregator(object):
     def aggregate(cls, df, groupby='second'):
         # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
         #                                 , orient='index', columns=Aggregate.columns)
+        # TODO Calculate aggregates according to case
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         res = series.groupby(series.index).\
@@ -39,12 +40,12 @@ class Aggregator(object):
 
 
 class Aggregate(AbstractMetric):
-    qlist = ['q%d'%n for n in Aggregator.perc_list]
+    qlist = ['q%d' % n for n in Aggregator.perc_list]
     columns = ['ts'] + qlist + ['average', 'stddev']
     type = 'aggregates'
 
-    def __init__(self, meta, queue):
-        super(Aggregate, self).__init__(meta, queue)
+    def __init__(self, meta, parent, queue):
+        super(Aggregate, self).__init__(meta, parent, queue)
         self.dtypes = {
             'ts': np.int64,
             'average': np.float64,

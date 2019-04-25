@@ -14,9 +14,9 @@ else:  # six.PY2
 
 import pandas as pd
 
-from .clients import available_clients
-from .metrics import available_metrics
-from .router import MetricsRouter
+from data_manager.clients import available_clients
+from data_manager.metrics import available_metrics
+from data_manager.router import MetricsRouter
 
 import warnings
 # FIXME: this one is dangerous because it ignores all FutureWarnings, not only required one
@@ -174,9 +174,10 @@ class DataManager(object):
         self.router = MetricsRouter(self)
         self.router.start()
 
-    def new_metric(self, meta):
+    def new_metric(self, meta, parent=''):
         """
         Create and register metric,
+        create entry in Case table if it has parent case,
         find subscribers for this metric (using meta as filter) and subscribe
 
         Return:
@@ -187,7 +188,7 @@ class DataManager(object):
             raise ValueError('Metric type should be defined.')
 
         if type_ in available_metrics:
-            metric_obj = available_metrics[type_](meta, self.routing_queue)  # create metric object
+            metric_obj = available_metrics[type_](meta, parent, self.routing_queue)  # create metric object
             metric_meta = pd.DataFrame({metric_obj.local_id: meta}).T  # create metric meta
             self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
             self.metrics[metric_obj.local_id] = metric_obj  # register metric object
@@ -207,7 +208,7 @@ class DataManager(object):
         else:
             raise NotImplementedError('Unknown metric type: %s' % type_)
 
-    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
+    def new_true_metric(self, name, parent='', raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -221,7 +222,7 @@ class DataManager(object):
                        }
         if kw is not None:
             metric_info.update(kw)
-        metric_obj = Metric(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+        metric_obj = Metric(metric_info, parent=parent, queue=self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
         self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
@@ -239,14 +240,15 @@ class DataManager(object):
             self.callbacks = self.callbacks.append(found_callbacks)
         return metric_obj
 
-    def new_aggregated_metric(self, name, **kw):
+    def new_aggregated_metric(self, name, parent, case_name, **kw):
         meta = {
             'type': Aggregate.type,
             'name': name,
+            'case_name': case_name
             # 'group': group
         }
         meta.update(kw)
-        return self.new_metric(meta)
+        return self.new_metric(meta, parent=parent)
 
     def subscribe(self, callback, filter_):
         """
@@ -334,14 +336,14 @@ def usage_sample():
         'clients': [
             {
                 'type': 'luna',
-                'api_address': 'http://hostname.tld',
+                'api_address': 'http://127.0.0.1:8000',
                 'user_agent': 'Tank Test',
             },
-            {
-                'type': 'local_storage',
-            }
+            # {
+            #     'type': 'local_storage',
+            # }
         ],
-        'test_start': time.time(),
+        'test_start': int(time.time()),
         'artifacts_base_dir': './logs'
     }
     data_session = DataSession(config=config)
@@ -364,7 +366,7 @@ def usage_sample():
     metric_obj.put(df)
     df2 = pd.DataFrame([[456, 456.456]], columns=['ts', 'value'])
     metric_obj.put(df2)
-    time.sleep(10)
+    time.sleep(5)
     data_session.close()
 
 

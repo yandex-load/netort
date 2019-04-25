@@ -4,8 +4,8 @@ import numpy as np
 
 
 class Distribution(AbstractMetric):
-    def __init__(self, meta, queue):
-        super(Distribution, self).__init__(meta, queue)
+    def __init__(self, meta, parent, queue):
+        super(Distribution, self).__init__(meta, parent, queue)
         self.dtypes = {
             'ts': np.int64,
             'l': np.int64,

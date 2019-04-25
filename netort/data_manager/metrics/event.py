@@ -3,8 +3,8 @@ import numpy as np
 
 
 class Event(AbstractMetric):
-    def __init__(self, meta, queue):
-        super(Event, self).__init__(meta, queue)
+    def __init__(self, meta, parent, queue):
+        super(Event, self).__init__(meta, parent, queue)
         self.dtypes = {
             'ts': np.int64,
             'value': np.str,

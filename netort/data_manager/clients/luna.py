@@ -39,6 +39,7 @@ class LunaClient(AbstractClient):
     create_metric_path = '/create_metric/'
     update_metric_path = '/update_metric/'
     upload_metric_path = '/upload_metric/?query='  # production
+    create_case_path = '/create_case/'
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
     close_job_path = '/close_job/'
@@ -248,16 +249,54 @@ class RegisterWorkerThread(threading.Thread):
                 if callback == self.client.put:
                     for id_ in ids.index:
                         if id_ not in self.client.public_ids:
-                            metric = self.client.job.manager.get_metric_by_id(id_)
-                            metric.tag = self.register_metric(metric)
-                            logger.debug(
-                                'Successfully received tag %s for metric.local_id: %s',
-                                metric.tag, metric.local_id
-                            )
-                            self.client.public_ids[metric.local_id] = metric.tag
+                            self.create_metric(id_)
             time.sleep(1)
         logger.info('Metric registration thread interrupted!')
         self._finished.set()
+
+    def create_metric(self, m_id):
+        metric = self.client.job.manager.get_metric_by_id(m_id)
+
+        metric.tag = self.register_metric(metric)
+        logger.debug(
+            'Successfully received tag %s for metric.local_id: %s',
+            metric.tag, metric.local_id
+        )
+
+        metric_cases = metric.meta.get('case')
+        if metric_cases:
+            for case in metric_cases.split('/'):
+                self.register_case(case, metric.local_id, metric.parent_id)
+        self.client.public_ids[metric.local_id] = metric.tag
+
+    def register_case(self, case_name, metric_id, parent_id):
+        """
+        Creates record in pgaas that links parent and child metric
+        """
+        metric_tag = self.client.public_ids.get(metric_id)
+        parent_tag = self.client.public_ids.get(parent_id)
+        json = {
+            'case_name': case_name,
+            'metric_tag': metric_tag,
+            'parent_id': parent_tag
+        }
+
+        req = requests.Request(
+            'POST',
+            "{api_address}{path}".format(
+                api_address=self.client.api_address,
+                path=self.client.create_case_path
+            ),
+            json=json
+        )
+        prepared_req = req.prepare()
+        logger.debug('Prepared create_case request:\n%s', pretty_print(prepared_req))
+        response = self.session.send(prepared_req)
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            logger.error('Luna did not return success for case creation on metric %s', metric_id)
+        return True
 
     def register_metric(self, metric):
         json = {
@@ -310,6 +349,9 @@ class WorkerThread(threading.Thread):
             self.__process_pending_queue()
         self._finished.set()
 
+    def __update_case_record(self, metric_id, case_name):
+
+
     def __process_pending_queue(self):
         exec_time_start = time.time()
         try:
@@ -333,8 +375,8 @@ class WorkerThread(threading.Thread):
                         na_rep='',
                         columns=self.client.luna_columns + data_type.columns
                     )
-                    # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
-                    # logger.debug('Body:\n{}'.format(body))
+                    logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
+                    logger.debug('Body:\n{}'.format(body))
                     req = requests.Request(
                         'POST', "{api}{data_upload_handler}{query}".format(
                             api=self.client.api_address, # production proxy
