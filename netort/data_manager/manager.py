@@ -77,8 +77,8 @@ class DataSession(object):
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
     # FIXME: move parameters from dict to args/kwargs, describe in docstring
-    def new_metric(self, meta):
-        return self.manager.new_metric(meta)
+    def new_metric(self, meta, parent):
+        return self.manager.new_metric(meta, parent)
 
     def new_true_metric(self, name, raw=True, aggregate=False, **kw):
         return self.manager.new_true_metric(name, raw, aggregate, **kw)
@@ -178,7 +178,7 @@ class DataManager(object):
         self.router = MetricsRouter(self)
         self.router.start()
 
-    def new_metric(self, meta, parent=''):
+    def new_metric(self, meta, parent):
         """
         Create and register metric,
         create entry in Case table if it has parent case,

@@ -269,8 +269,10 @@ class RegisterWorkerThread(threading.Thread):
 
         metric_cases = metric.meta.get('case')
         if metric_cases:
-            for case in metric_cases.split('/'):
-                self.register_case(case, metric.local_id, metric.parent_id)
+            for case_name in metric_cases.split('|'):
+                case_id = self.register_case(case_name, metric.local_id, metric.parent_id)
+                if case_id:
+                    logger.info('Case %s created for case_name %s', case_id, case_name)
         self.client.public_ids[metric.local_id] = metric.tag
 
     def register_case(self, case_name, metric_id, parent_id):
@@ -280,9 +282,9 @@ class RegisterWorkerThread(threading.Thread):
         metric_tag = self.client.public_ids.get(metric_id)
         parent_tag = self.client.public_ids.get(parent_id)
         json = {
-            'case_name': case_name,
-            'metric_tag': metric_tag,
-            'parent_id': parent_tag
+            'name': case_name,
+            'tag': metric_tag,
+            'parent': parent_tag
         }
 
         req = requests.Request(
@@ -296,11 +298,11 @@ class RegisterWorkerThread(threading.Thread):
         prepared_req = req.prepare()
         logger.debug('Prepared create_case request:\n%s', pretty_print(prepared_req))
         response = self.session.send(prepared_req)
-        try:
-            response.raise_for_status()
-        except HTTPError:
-            logger.error('Luna did not return success for case creation on metric %s', metric_id)
-        return True
+        response.raise_for_status()
+        if not response.content:
+            logger.warning('Luna did not return success for case creation on metric %s', metric_id)
+        else:
+            return response.content
 
     def register_metric(self, metric):
         json = {

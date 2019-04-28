@@ -158,12 +158,11 @@ class MetricData(object):
 class AbstractMetric(object):
     VALUE_COL = 'value'
     TS_COL = 'ts'
-    CASE_COL = 'tag'
 
     def __init__(self, meta, parent, queue_, raw=True, aggregate=False):
         self.local_id = "metric_{uuid}".format(uuid=uuid.uuid4())
         self.meta = meta
-        self.parent_id = parent # local_id of parent case if exists
+        self.parent_id = parent  # local_id of parent case if exists
         self.routing_queue = queue_
         self.raw = raw
         self.aggregate = aggregate
