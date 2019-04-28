@@ -5,18 +5,19 @@ import time
 import os
 import pwd
 import six
-from netort.data_manager.metrics import Aggregate, Metric
+from netort.data_manager.metrics import Aggregate, Metric, Event
 
 if six.PY3:
     from queue import Queue
 else:  # six.PY2
+    # noinspection PyUnresolvedReferences
     from Queue import Queue
 
 import pandas as pd
 
-from data_manager.clients import available_clients
-from data_manager.metrics import available_metrics
-from data_manager.router import MetricsRouter
+from netort.data_manager.clients import available_clients
+from netort.data_manager.metrics import available_metrics
+from netort.data_manager.router import MetricsRouter
 
 import warnings
 # FIXME: this one is dangerous because it ignores all FutureWarnings, not only required one
@@ -81,6 +82,9 @@ class DataSession(object):
 
     def new_true_metric(self, name, raw=True, aggregate=False, **kw):
         return self.manager.new_true_metric(name, raw, aggregate, **kw)
+
+    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
+        return self.manager.new_event_metric(name, raw, aggregate, **kw)
 
     # FIXME: if dict is passed instead of str to name, test will break
     def new_aggregated_metric(self, name, **kw):
@@ -223,6 +227,39 @@ class DataManager(object):
         if kw is not None:
             metric_info.update(kw)
         metric_obj = Metric(metric_info, parent=parent, queue=self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+        metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
+        self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
+        self.metrics[metric_obj.local_id] = metric_obj  # register metric object
+
+        # find subscribers for this metric
+        this_metric_subscribers = self.__reversed_filter(self.subscribers, metric_info)
+        if this_metric_subscribers.empty:
+            logger.debug('subscriber for metric %s not found', metric_obj.local_id)
+        else:
+            logger.debug('Found subscribers for this metric, subscribing...: %s', this_metric_subscribers)
+            # attach this metric id to discovered subscribers and select id <-> callbacks
+            this_metric_subscribers['id'] = metric_obj.local_id
+            found_callbacks = this_metric_subscribers[['id', 'callback']].set_index('id')
+            # add this metric callbacks to DataManager's callbacks
+            self.callbacks = self.callbacks.append(found_callbacks)
+        return metric_obj
+
+    def new_event_metric(self, name, parent, raw=True, aggregate=False, **kw):
+        """
+        Create and register metric,
+        find subscribers for this metric (using meta as filter) and subscribe
+
+        Return:
+            metric (available_metrics[0]): one of Metric
+        """
+
+        metric_info = {'type': 'event',
+                       'name': name,
+                       'parent': parent
+                       }
+        if kw is not None:
+            metric_info.update(kw)
+        metric_obj = Event(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
         self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object

@@ -7,15 +7,21 @@ import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
+
 def get_uploader(data_session, column_mapping, overall_only=False):
     """
     :type data_session: DataSession
     """
     _router = {}
-    _overall = {col_name: data_session.new_true_metric(name + ' overall',
-                                                       raw=False,
-                                                       aggregate=True)
-                for col_name, name in column_mapping.items()}
+    _overall = {
+        'interval_real': data_session.new_true_metric('interval_real overall', raw=False, aggregate=True),
+        'connect_time': data_session.new_true_metric('connect_time overall', raw=False, aggregate=True),
+        'send_time': data_session.new_true_metric('send_time overall', raw=False, aggregate=True),
+        'latency': data_session.new_true_metric('latency overall', raw=False, aggregate=True),
+        'receive_time': data_session.new_true_metric('receive_time overall', raw=False, aggregate=True),
+        'interval_event': data_session.new_true_metric('interval_event overall', raw=False, aggregate=True),
+        'net_code': data_session.new_event_metric('net_code overall', raw=False, aggregate=True),
+        'proto_code': data_session.new_event_metric('proto_code overall', raw=False, aggregate=True)}
 
     def get_router(tags):
         """
@@ -65,6 +71,9 @@ def main():
     # col_map = {name: (name, 'fractions') for name in ['connect_time', 'send_time',
     #            'latency', 'receive_time',
     #            'interval_event']}
+    metrics_map = {
+        'interval_real', 'connect_time', 'send_time', 'latency',
+                   'receive_time', 'interval_event', 'net_code', 'proto_code'}
     col_map_aggr = {name: 'metric %s' % name for name in
                     ['interval_real', 'connect_time', 'send_time', 'latency',
                      'receive_time', 'interval_event']}

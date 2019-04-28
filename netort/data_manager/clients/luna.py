@@ -53,9 +53,10 @@ class LunaClient(AbstractClient):
         self.public_ids = {}
         self.luna_columns = ['key_date', 'tag']
         self.key_date = "{key_date}".format(key_date=datetime.datetime.now().strftime("%Y-%m-%d"))
-        self.register_worker = RegisterWorkerThread(self)
+        self._interrupted = threading.Event()
+        self.register_worker = RegisterWorkerThread(self, self._interrupted)
         self.register_worker.start()
-        self.worker = WorkerThread(self)
+        self.worker = WorkerThread(self, self._interrupted)
         self.worker.start()
         self.session = requests.session()
 
@@ -78,6 +79,9 @@ class LunaClient(AbstractClient):
                 logger.debug('Failed to create Luna job', exc_info=True)
                 logger.warning('Failed to create Luna job')
                 self.failed.set()
+            except HTTPError:
+                self._interrupted.set()
+                logger.error("Luna service unavailable", exc_info=True)
             else:
                 return self._job_number
         else:
@@ -86,7 +90,6 @@ class LunaClient(AbstractClient):
     def put(self, data_type, df):
         if not self.failed.is_set():
             self.pending_queue.put((data_type, df))
-            logger.debug('Put df to luna queue')
         else:
             logger.debug('Skipped incoming data chunk due to failures')
 
@@ -124,6 +127,7 @@ class LunaClient(AbstractClient):
 
         response = send_chunk(self.session, prepared_req)
         logger.debug('Luna create job status: %s', response.status_code)
+        response.raise_for_status()
         logger.debug('Answ data: %s', response.content)
         job_id = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
         if not job_id:
@@ -232,13 +236,13 @@ class LunaClient(AbstractClient):
 
 class RegisterWorkerThread(threading.Thread):
     """ Register metrics metadata, get public_id from luna and create map local_id <-> public_id """
-    def __init__(self, client):
+    def __init__(self, client, interrupted):
         """
         :type client: LunaClient
         """
         super(RegisterWorkerThread, self).__init__()
         self._finished = threading.Event()
-        self._interrupted = threading.Event()
+        self._interrupted = interrupted
         self.client = client
         self.session = requests.session()
 
@@ -317,6 +321,7 @@ class RegisterWorkerThread(threading.Thread):
         prepared_req = req.prepare()
         logger.debug('Prepared create_metric request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
+        response.raise_for_status()
         if not response.content:
             logger.debug('Luna did not return uniq_id for metric registration: %s', response.content)
         else:
@@ -332,10 +337,10 @@ class RegisterWorkerThread(threading.Thread):
 
 class WorkerThread(threading.Thread):
     """ Process data """
-    def __init__(self, client):
+    def __init__(self, client, interrupted):
         super(WorkerThread, self).__init__()
         self._finished = threading.Event()
-        self._interrupted = threading.Event()
+        self._interrupted = interrupted
         self.client = client
         self.session = requests.session()
 
@@ -350,7 +355,7 @@ class WorkerThread(threading.Thread):
         self._finished.set()
 
     def __update_case_record(self, metric_id, case_name):
-
+        pass
 
     def __process_pending_queue(self):
         exec_time_start = time.time()
@@ -411,7 +416,7 @@ class WorkerThread(threading.Thread):
                         return
                 else:
                     # no public_id yet, put it back
-                    self.client.pending_queue.put(df_grouped_by_id)
+                    self.client.put(data_type, df)
         logger.debug('Luna client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
 
     def is_finished(self):
