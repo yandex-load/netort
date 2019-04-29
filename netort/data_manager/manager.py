@@ -212,7 +212,7 @@ class DataManager(object):
         else:
             raise NotImplementedError('Unknown metric type: %s' % type_)
 
-    def new_true_metric(self, name, parent='', raw=True, aggregate=False, **kw):
+    def new_true_metric(self, name, parent=None, raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -259,7 +259,7 @@ class DataManager(object):
                        }
         if kw is not None:
             metric_info.update(kw)
-        metric_obj = Event(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+        metric_obj = Event(metric_info, parent=None, queue=self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
         self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object

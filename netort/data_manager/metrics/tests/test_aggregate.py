@@ -1,4 +1,7 @@
-from Queue import Queue
+try:
+    from Queue import Queue
+except ImportError:
+    from queue import Queue
 
 import pandas as pd
 from netort.data_manager.common.interfaces import MetricData
@@ -8,7 +11,7 @@ from netort.data_manager.metrics.aggregate import Aggregator
 
 
 def test_value_asserion():
-    aggr_metric = Aggregate({'type': Aggregate.type}, Queue())
+    aggr_metric = Aggregate({'type': Aggregate.type}, parent=None, queue=Queue())
     data = pd.read_csv('netort/data_manager/metrics/tests/df1.csv')
     with pytest.raises(AssertionError) as e:
         aggr_metric.put(data)
@@ -21,7 +24,7 @@ def test_value_asserion():
 ])
 def test_put(input_file, output_file):
     q = Queue()
-    aggr_metric = Aggregate({'type': Aggregate.type}, q)
+    aggr_metric = Aggregate({'type': Aggregate.type}, None, q)
     data = pd.read_csv(input_file)
     data['value'] = data['interval_real']
     aggr_metric.put(data)
