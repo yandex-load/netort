@@ -9,6 +9,7 @@ class Metric(AbstractMetric):
             'ts': np.int64,
             'value': np.float64
         }
+        self.columns = ['ts', 'value']
 
     @property
     def type(self):
