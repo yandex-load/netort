@@ -3,7 +3,7 @@ import logging
 import uuid
 import time
 import os
-import pwd
+import getpass
 import six
 from netort.data_manager.metrics import Aggregate, Metric, Event
 
@@ -129,7 +129,7 @@ class DataSession(object):
 
     def __get_operator(self):
         try:
-            return self.config.get('operator') or pwd.getpwuid(os.geteuid())[0]
+            return self.config.get('operator') or getpass.getuser()
         except:  # noqa: E722
             logger.error(
                 "Couldn't get username from the OS. Please, set the 'operator' option explicitly in your config "

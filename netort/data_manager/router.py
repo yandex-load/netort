@@ -72,9 +72,11 @@ class MetricsRouter(threading.Thread):
             if metric_data.is_aggregated:
                 from_buffer = self._from_buffer(metric_data, last_piece)
             for dtype in metric_data.data_types:
+                unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
+                if unprocessed.empty:
+                    continue
                 processed = self.reindex_to_local_id(
-                    dtype.processor(from_buffer if dtype.is_aggregated() else metric_data.df,
-                                    last_piece),
+                    dtype.processor(unprocessed, last_piece),
                     metric_data.local_id)
                 if not processed.empty:
                     routed_data.setdefault(dtype, []).append(
