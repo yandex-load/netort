@@ -80,9 +80,16 @@ def main():
     uploader = get_uploader(data_session, col_map_aggr, True)
 
     with open(args.phout) as f:
-        chunk = f.read()
-    df = string_to_df_microsec(chunk)
-    uploader(df)
+        buffer = ''
+        while True:
+            chunk, new_buffer = f.read(64*1024).rsplit('\n', 1)
+            chunk = buffer + chunk + '\n'
+            buffer = new_buffer
+            if len(chunk) > 0:
+                df = string_to_df_microsec(chunk)
+                uploader(df)
+            else:
+                break
     data_session.close()
 
     # <type 'list'>: ['848f1769e16843f49d4f1b5b43c26124', '700b9fbb626c492b8fe16793ba659561', '4c22258a07984acfaf92d67e13c050a2', '1c3f1af845b842e7ae63554f74c89661', '17b8fd1da726452ba6abb9261a09d53f']
