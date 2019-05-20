@@ -1,11 +1,19 @@
 import argparse
 
 from datetime import datetime
+
+import signal
 from netort.data_manager import DataSession
 from yandextank.plugins.Phantom.reader import string_to_df_microsec
 import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+
+def get_handler(data_session):
+    def handler(signum, frame):
+        data_session.interrupt()
+    return handler
 
 
 def get_uploader(data_session, column_mapping, overall_only=False):
@@ -79,12 +87,19 @@ def main():
                      'receive_time', 'interval_event']}
     uploader = get_uploader(data_session, col_map_aggr, True)
 
+    signal.signal(signal.SIGINT, get_handler(data_session))
+
     with open(args.phout) as f:
         buffer = ''
         while True:
-            chunk, new_buffer = f.read(64*1024).rsplit('\n', 1)
-            chunk = buffer + chunk + '\n'
-            buffer = new_buffer
+            parts = f.read(128*1024)
+            try:
+                chunk, new_buffer = parts.rsplit('\n', 1)
+                chunk = buffer + chunk + '\n'
+                buffer = new_buffer
+            except ValueError:
+                chunk = buffer + parts
+                buffer = ''
             if len(chunk) > 0:
                 df = string_to_df_microsec(chunk)
                 uploader(df)
