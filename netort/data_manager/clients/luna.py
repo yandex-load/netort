@@ -364,7 +364,7 @@ class WorkerThread(threading.Thread):
         try:
             data_type, df = self.client.pending_queue.get_nowait()
         except queue.Empty:
-            time.sleep(1)
+            logger.debug('Luna queue empty')
         else:
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)

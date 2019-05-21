@@ -152,6 +152,17 @@ class DataSession(object):
                 logger.debug('Client closed: %s', client)
         logger.info('DataSession finished!')
 
+    def interrupt(self):
+        self.manager.interrupt()
+        for client in self.clients:
+            try:
+                client.close()
+            except Exception:
+                logger.warning('Client %s failed to close', client)
+            else:
+                logger.debug('Client closed: %s', client)
+        logger.info('DataSession finished!')
+
 
 class DataManager(object):
     """DataManager routes data to subscribers using metrics meta as a filter. When someone calls
@@ -364,6 +375,10 @@ class DataManager(object):
 
     def close(self):
         self.router.close()
+
+    def interrupt(self):
+        self.router.interrupt()
+        self.router.join()
 
 
 def usage_sample():
