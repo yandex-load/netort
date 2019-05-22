@@ -320,11 +320,10 @@ class WorkerThread(threading.Thread):
         self._finished.set()
 
     def __process_pending_queue(self):
-        exec_time_start = time.time()
         try:
             data_type, df = self.client.pending_queue.get_nowait()
         except queue.Empty:
-            logger.debug('Luna queue empty')
+            time.sleep(0.2)
         else:
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
@@ -342,8 +341,6 @@ class WorkerThread(threading.Thread):
                         na_rep='',
                         columns=self.client.luna_columns + data_type.columns
                     )
-                    # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
-                    # logger.debug('Body:\n{}'.format(body))
                     req = requests.Request(
                         'POST', "{api}{data_upload_handler}{query}".format(
                             api=self.client.api_address, # production proxy
@@ -359,12 +356,6 @@ class WorkerThread(threading.Thread):
                     }
                     req.data = body
                     prepared_req = req.prepare()
-                    # logger.debug('Prepared request: %s' % '{}\n{}\n{}\n\n{}'.format(
-                    #     '-----------START-----------',
-                    #     prepared_req.method + ' ' + prepared_req.url,
-                    #     '\n'.join('{}: {}'.format(k, v) for k, v in prepared_req.headers.items()),
-                    #     prepared_req.body,
-                    # ))
                     try:
                         resp = send_chunk(self.session, prepared_req)
                         resp.raise_for_status()
@@ -379,7 +370,6 @@ class WorkerThread(threading.Thread):
                 else:
                     # no public_id yet, put it back
                     self.client.put(data_type, df)
-        logger.debug('Luna client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
 
     def is_finished(self):
         return self._finished

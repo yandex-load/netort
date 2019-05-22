@@ -6,10 +6,6 @@ import pandas as pd
 import logging
 
 from netort.data_manager.common.interfaces import Aggregated
-from netort.data_manager.metrics import Aggregate
-from netort.data_manager.metrics.aggregate import Aggregator
-from functools import reduce
-from ..data_processing import get_nowait_from_queue
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +51,7 @@ class MetricsRouter(threading.Thread):
         :rtype: pd.DataFrame
         """
 
-        buffered = self.__buffer.get(metric_data.local_id)
+        buffered = self.__buffer.pop(metric_data.local_id, None)
         df = pd.concat([buffered, metric_data.df]) if buffered is not None else metric_data.df
         if not last_piece:
             cut, new_buf = df[df.second < df.second.max() - Aggregated.buffer_size], \
@@ -63,7 +59,6 @@ class MetricsRouter(threading.Thread):
             self.__buffer[metric_data.local_id] = new_buf
             return cut
         else:
-            self.__buffer[metric_data.local_id] = None
             return df
 
     def __route(self, last_piece=False):
