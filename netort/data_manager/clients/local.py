@@ -102,7 +102,7 @@ class ProcessingThread(threading.Thread):
     def __process_pending_queue(self):
         exec_time_start = time.time()
         try:
-            data_type, incoming_df = self.client.pending_queue.get_nowait()
+            incoming_df = self.client.pending_queue.get_nowait()
             df = incoming_df.copy()
         except queue.Empty:
             time.sleep(1)
@@ -119,7 +119,7 @@ class ProcessingThread(threading.Thread):
                     for name, type_ in metric.dtypes.items():
                         dtypes[name] = type_.__name__
                     this_metric_meta = {
-                        'type': metric.type.__name__,
+                        'type': metric.type,
                         'names': metric.columns,
                         'dtypes': dtypes,
                         'meta': metric.meta

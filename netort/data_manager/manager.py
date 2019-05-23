@@ -3,7 +3,7 @@ import logging
 import uuid
 import time
 import os
-import getpass
+import pwd
 import six
 from netort.data_manager.metrics import Aggregate, Metric, Event
 
@@ -129,7 +129,7 @@ class DataSession(object):
 
     def __get_operator(self):
         try:
-            return self.config.get('operator') or getpass.getuser()
+            return self.config.get('operator') or pwd.getpwuid(os.geteuid())[0]
         except:  # noqa: E722
             logger.error(
                 "Couldn't get username from the OS. Please, set the 'operator' option explicitly in your config "
@@ -143,17 +143,6 @@ class DataSession(object):
         logger.info('Waiting the rest of data from router...')
         self.manager.router.join()
         logger.info('Sending close to DataSession clients...')
-        for client in self.clients:
-            try:
-                client.close()
-            except Exception:
-                logger.warning('Client %s failed to close', client)
-            else:
-                logger.debug('Client closed: %s', client)
-        logger.info('DataSession finished!')
-
-    def interrupt(self):
-        self.manager.interrupt()
         for client in self.clients:
             try:
                 client.close()
@@ -375,10 +364,6 @@ class DataManager(object):
 
     def close(self):
         self.router.close()
-
-    def interrupt(self):
-        self.router.interrupt()
-        self.router.join()
 
 
 def usage_sample():

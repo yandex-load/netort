@@ -1,7 +1,5 @@
 import threading
 import time
-from Queue import Empty
-
 import pandas as pd
 import logging
 
@@ -31,19 +29,19 @@ class MetricsRouter(threading.Thread):
         self.aggregator_buffer_size = aggregator_buffer_size
         self.manager = manager
         self._finished = threading.Event()
-        self._stopped = threading.Event()
         self._interrupted = threading.Event()
         self.setDaemon(True)  # just in case, bdk+ytank stuck w/o this at join of Drain thread
         self.__buffer = {}
 
     def run(self):
-        while not self._stopped.is_set():
+        while not self._interrupted.is_set():
             exec_time_start = time.time()
             self.__route()
             logger.debug('Routing cycle took %.2f ms', (time.time() - exec_time_start) * 1000)
+            time.sleep(1)
         logger.info('Router received interrupt signal, routing rest of the data. Qsize: %s',
                     self.manager.routing_queue.qsize())
-        while self.manager.routing_queue.qsize() > 1 and not self._interrupted.is_set():
+        while self.manager.routing_queue.qsize() > 1:
             self.__route()
         self.__route(last_piece=True)
         logger.info('Router finished its work')
@@ -67,29 +65,21 @@ class MetricsRouter(threading.Thread):
             return df
 
     def __route(self, last_piece=False):
-        # all_data = get_nowait_from_queue(self.manager.routing_queue)
-        try:
-            metric_data = self.manager.routing_queue.get_nowait()
-        except Empty:
-            return
+        all_data = get_nowait_from_queue(self.manager.routing_queue)
+
         routed_data = {}
-        if metric_data.is_aggregated:
-            from_buffer = self._from_buffer(metric_data, last_piece)
-        for dtype in metric_data.data_types:
-            unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
-            if unprocessed.empty:
-                continue
-            t = time.time()
-            processed = self.reindex_to_local_id(
-                dtype.processor(unprocessed, last_piece),
-                metric_data.local_id)
-            logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
-                                                                             len(unprocessed),
-                                                                             time.time()-t))
-            if not processed.empty:
-                routed_data.setdefault(dtype, []).append(
-                    processed
-                )
+        for metric_data in all_data:
+            if metric_data.is_aggregated:
+                from_buffer = self._from_buffer(metric_data, last_piece)
+            for dtype in metric_data.data_types:
+                processed = self.reindex_to_local_id(
+                    dtype.processor(from_buffer if dtype.is_aggregated() else metric_data.df,
+                                    last_piece),
+                    metric_data.local_id)
+                if not processed.empty:
+                    routed_data.setdefault(dtype, []).append(
+                        processed
+                    )
         if last_piece:
             for metric_local_id, df in self.__buffer.items():
                 d_types = self.manager.metrics[metric_local_id].data_types
@@ -119,7 +109,10 @@ class MetricsRouter(threading.Thread):
                     right_index=True
                 ).groupby('callback', sort=False)
                 for callback, incoming_chunks in router:
+                    # exec_time_start = time.time()
                     callback(data_type, incoming_chunks)
+                    logger.debug('Callback to {}'.format(callback))
+                    # logger.debug('Callback call took %.2f ms', (time.time() - exec_time_start) * 1000)
             except TypeError:
                 logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
                              data_type, routed_data[data_type], exc_info=True)
@@ -133,9 +126,4 @@ class MetricsRouter(threading.Thread):
         self._finished.wait(timeout=timeout)
 
     def close(self):
-        self._stopped.set()
-
-    def interrupt(self):
-        self.close()
-        logger.debug('Routing interrupted')
         self._interrupted.set()

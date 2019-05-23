@@ -14,6 +14,7 @@ import queue
 import datetime
 import os
 import six
+import pandas as pd
 
 requests.packages.urllib3.disable_warnings()
 
@@ -344,6 +345,7 @@ class WorkerThread(threading.Thread):
         self._finished = threading.Event()
         self._interrupted = interrupted
         self.client = client
+        self.data = {}
         self.session = requests.session()
 
     def run(self):
@@ -356,11 +358,9 @@ class WorkerThread(threading.Thread):
             self.__process_pending_queue()
         self._finished.set()
 
-    def __update_case_record(self, metric_id, case_name):
-        pass
-
     def __process_pending_queue(self):
         exec_time_start = time.time()
+
         try:
             data_type, df = self.client.pending_queue.get_nowait()
         except queue.Empty:
@@ -386,10 +386,11 @@ class WorkerThread(threading.Thread):
                     logger.debug('Body:\n{}'.format(body))
                     req = requests.Request(
                         'POST', "{api}{data_upload_handler}{query}".format(
-                            api=self.client.api_address, # production proxy
+                            api=self.client.api_address,  # production proxy
                             data_upload_handler=self.client.upload_metric_path,
                             query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
+                                table="{db}.{type}".format(
+                                    db=self.client.dbname, type=data_type.table_name)  # production
                             )
                         )
                     )
@@ -420,6 +421,94 @@ class WorkerThread(threading.Thread):
                     # no public_id yet, put it back
                     self.client.put(data_type, df)
         logger.debug('Luna client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
+
+    def p_pending_queue(self):
+        self.data['max_length'] = 0
+        while self.data['max_length'] < 1000:
+            try:
+                data_type, raw_df = self.client.pending_queue.get_nowait()
+                df = self.__update_df(data_type, raw_df)
+                if not df:
+                    continue
+                if not self.data.get(data_type):
+                    self.data[data_type.table_name] = [df[data_type.columns]]
+                    self.data['max_length'] = self.__update_max_length(df.shape[0])
+                else:
+                    self.data[data_type.table_name].append(df[data_type.columns])
+                    self.data['max_length'] = self.__update_max_length(df.shape[0])
+            except queue.Empty:
+                logger.debug('Luna queue empty')
+
+        for table_name, data in self.data.items():
+            if table_name is not 'max_length':
+                result_df = pd.concat(data)
+                try:
+                    self.__upload_data(table_name, result_df)
+                except RetryError:
+                    logger.warning('Failed to upload data to luna backend after consecutive retries. '
+                                   'Attempt to send data in two halves')
+                    try:
+                        self.__upload_data(table_name, result_df.head(len(result_df)//2))
+                        self.__upload_data(table_name, result_df.tail(len(result_df) - len(result_df)//2))
+                    except RetryError:
+                        logger.warning('Failed to upload data to luna backend after consecutive retries. Sorry.')
+        self.data = {}
+
+    def __update_max_length(self, new_length):
+        return new_length if self.data['max_length'] < new_length else self.data['max_length']
+
+    def __update_df(self, data_type, df):
+        for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
+            metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+            if not metric:
+                logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
+                return
+            if metric.local_id not in self.client.public_ids:
+                # no public_id yet, put it back
+                self.client.put(data_type, df)
+                return
+            df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
+            df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
+            # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
+            logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
+            return df_grouped_by_id
+
+    def __upload_data(self, table_name, df):
+        body = df.to_csv(
+                sep='\t',
+                header=False,
+                index=False,
+                na_rep='',
+                columns=self.client.luna_columns + df.columns.values.tolist()
+            )
+        logger.debug('Body:\n{}'.format(body))
+        req = requests.Request(
+            'POST', "{api}{data_upload_handler}{query}".format(
+                api=self.client.api_address,  # production proxy
+                data_upload_handler=self.client.upload_metric_path,
+                query="INSERT INTO {table} FORMAT TSV".format(
+                    table="{db}.{type}".format(db=self.client.dbname, type=table_name)  # production
+                    )
+            )
+        )
+        req.headers = {
+            'X-ClickHouse-User': 'lunapark',
+            'X-ClickHouse-Key': 'lunapark'
+        }
+        req.data = body
+        prepared_req = req.prepare()
+        # logger.debug('Prepared request: %s' % '{}\n{}\n{}\n\n{}'.format(
+        #     '-----------START-----------',
+        #     prepared_req.method + ' ' + prepared_req.url,
+        #     '\n'.join('{}: {}'.format(k, v) for k, v in prepared_req.headers.items()),
+        #     prepared_req.body,
+        # ))
+
+        try:
+            resp = send_chunk(self.session, prepared_req)
+            resp.raise_for_status()
+        except HTTPError:
+            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.format(resp.content))
 
     def is_finished(self):
         return self._finished
