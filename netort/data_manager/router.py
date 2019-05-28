@@ -34,9 +34,7 @@ class MetricsRouter(threading.Thread):
 
     def run(self):
         while not self._stopped.is_set():
-            exec_time_start = time.time()
             self.__route()
-            logger.debug('Routing cycle took %.2f ms', (time.time() - exec_time_start) * 1000)
         logger.info('Router received interrupt signal, routing rest of the data. Qsize: %s',
                     self.manager.routing_queue.qsize())
         while self.manager.routing_queue.qsize() > 1 and not self._interrupted.is_set():

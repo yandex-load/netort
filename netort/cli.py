@@ -33,7 +33,6 @@ def get_uploader(data_session, column_mapping, overall_only=False):
 
     def get_router(tags):
         """
-
         :param tags:
         :return: {'%tag': {'%column_name': metric_object(name, group)}}
         """
