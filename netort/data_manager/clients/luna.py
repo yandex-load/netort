@@ -345,7 +345,7 @@ class WorkerThread(threading.Thread):
                         'POST', "{api}{data_upload_handler}{query}".format(
                             api=self.client.api_address, # production proxy
                             data_upload_handler=self.client.upload_metric_path,
-                            query="INSERT INTO {table} FORMAT TSV".format(
+                            query="INSERT INTO {table}_buffer FORMAT TSV".format(
                                 table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
                             )
                         )
