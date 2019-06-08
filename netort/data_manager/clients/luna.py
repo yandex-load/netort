@@ -273,8 +273,8 @@ class RegisterWorkerThread(threading.Thread):
             'type': metric.type.table_name,
             'types': [t.table_name for t in metric.data_types],
             'local_id': metric.local_id,
+            'meta': metric.meta
         }
-        json.update(metric.meta)
         req = requests.Request(
             'POST',
             "{api_address}{path}".format(
@@ -316,12 +316,14 @@ class WorkerThread(threading.Thread):
             'Luna uploader finishing work and '
             'trying to send the rest of data, qsize: %s', self.client.pending_queue.qsize())
         while self.client.pending_queue.qsize() > 0:
-            self.__process_pending_queue()
+            self.__process_pending_queue(progress=True)
         self._finished.set()
 
-    def __process_pending_queue(self):
+    def __process_pending_queue(self, progress=False):
         try:
             data_type, df = self.client.pending_queue.get_nowait()
+            if progress:
+                logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
         except queue.Empty:
             time.sleep(0.2)
         else:
@@ -370,6 +372,7 @@ class WorkerThread(threading.Thread):
                 else:
                     # no public_id yet, put it back
                     self.client.put(data_type, df)
+                    logger.debug('No public id for metric {}'.format(metric.local_id))
 
     def is_finished(self):
         return self._finished
