@@ -1,6 +1,11 @@
-from Queue import Queue
-
 import pandas as pd
+import six
+
+if six.PY3:
+    from queue import Queue
+else:  # six.PY2
+    from Queue import Queue
+
 from netort.data_manager.common.interfaces import MetricData
 from netort.data_manager.metrics import Aggregate
 import pytest

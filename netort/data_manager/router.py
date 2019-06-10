@@ -1,6 +1,11 @@
 import threading
 import time
-from Queue import Empty
+import six
+
+if six.PY3:
+    from queue import Empty
+else:  # six.PY2
+    from Queue import Empty
 
 import pandas as pd
 import logging
