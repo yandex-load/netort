@@ -163,7 +163,7 @@ class AbstractMetric(object):
     TS_COL = 'ts'
 
     def __init__(self, meta, queue_, raw=True, aggregate=False):
-        self.local_id = "metric_{uuid}".format(uuid=uuid.uuid4())
+        self.local_id = str(uuid.uuid4())
         self.meta = meta
         self.routing_queue = queue_
         self.raw = raw

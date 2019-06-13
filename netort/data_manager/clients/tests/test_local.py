@@ -3,7 +3,7 @@ import json
 import pathlib
 import numpy as np
 import pandas as pd
-from time import time
+import time
 from netort.data_manager import DataSession
 
 import logging
@@ -42,7 +42,7 @@ def data_session(tmp_path):
                 'type': 'local_storage',
             }
         ],
-        'test_start': int(time()*1e6),
+        'test_start': int(time.time()*1e6),
         'artifacts_base_dir': str(artifacts_base_dir)
     }
     data_session = DataSession(config=config)
@@ -56,7 +56,7 @@ def test_dir_created(tmp_path):
                 'type': 'local_storage',
             }
         ],
-        'test_start': int(time()*1e6),
+        'test_start': int(time.time()*1e6),
         'artifacts_base_dir': str(artifacts_base_dir)
     }
     data_session = DataSession(config=config)
@@ -112,9 +112,9 @@ def test_raw_metric(tmp_path, sin_data_frame, data_session):
     assert fields[1] == "0.0", "The value field should be equal to 0.0"
 
 
-def test_aggregated_metric(tmp_path, sin_data_frame, data_session):
+def test_quantiles_metric(tmp_path, sin_data_frame, data_session):
     metric = data_session.new_true_metric(
-        "My Raw Metric",
+        "My Aggregated Metric",
         raw=False, aggregate=True,
         hostname='localhost',
         source='PyTest',
@@ -129,79 +129,61 @@ def test_aggregated_metric(tmp_path, sin_data_frame, data_session):
 
     # TODO: make this pass. Metric should be created as soon as possible after it was created
     # assert os.path.isdir(metric_path), "Artifacts base dir should exist after datasession have been created"
+
+    # TODO: make this line unnecessary
+    # if no time.sleep, no distribution data will be written
+    time.sleep(1)
+
     data_session.close()
     with open(pathlib.Path(data_session.artifacts_dir) / 'meta.json') as meta_file:
         meta = json.load(meta_file)
 
     assert 'metrics' in meta, "Metrics should have been written to meta.json"
-    assert len(meta['metrics']) == 1, "Exactly one metric should have been written to meta.json"
+    assert len(meta['metrics']) == 2, "Exactly two metrics should have been written to meta.json (aggregates and distibutions)"
 
-    metric_id = list(meta['metrics'])[0]
-    metric_data_path = pathlib.Path(data_session.artifacts_dir) / f'{metric_id}.data'
-    assert os.path.isfile(metric_data_path), "Metric data should have been written"
+    metric_types = set(m['type'] for m in meta['metrics'].values())
+    assert metric_types == {'TypeQuantiles', 'TypeDistribution'}, "Metric types should be Quantiles and Distribution"
 
-    with open(metric_data_path) as data_file:
-        metric_data = data_file.readlines()
+    metric_ids = {v['type']: k for k, v in meta['metrics'].items()}
+
+    q_metric_id = metric_ids['TypeQuantiles']
+    q_metric_data_path = pathlib.Path(data_session.artifacts_dir) / f'{q_metric_id}.data'
+    assert os.path.isfile(q_metric_data_path), "Quantile data should have been written"
+
+    with open(q_metric_data_path) as data_file:
+        q_metric_data = data_file.readlines()
     
     # this test depends on MAGIC VALUE above and flacky even with constant timestamp
-    assert len(metric_data) == 3, "There should be a header and exactly one data line in the data file"
+    assert len(q_metric_data) == 2, "There should be a header and exactly one data line in the data file"
     
-    metric_meta = json.loads(metric_data[0])
-    assert "type" in metric_meta, "Type info should be in the header"
-    assert metric_meta["type"] == "TypeTimeSeries", "Type of metric should be TypeTimeSeries"
+    q_metric_meta = json.loads(q_metric_data[0])
+    assert "type" in q_metric_meta, "Type info should be in the header"
+    assert q_metric_meta["type"] == "TypeQuantiles", "Type of quantile data should be TypeQuantiles"
 
-    # fields = metric_data[1].strip().split("\t")
-    # assert len(fields) == 2, "There should be exactly two tab-separated fields in data"
-    # assert fields[0] == "0", "The timestamp field should be equal to 0"
-    # assert fields[1] == "0", "The value field should be equal to 0"
+    fields = q_metric_data[1].strip().split("\t")
+    assert len(fields) == 15, "There should be exactly 15 tab-separated fields in quantile data"
+    assert fields[0] == "0", "The timestamp field should be equal to 0"
+    assert fields[1] == "0.0", "The q0 field should be equal to 0.0"
 
+    d_metric_id = metric_ids['TypeDistribution']
+    d_metric_data_path = pathlib.Path(data_session.artifacts_dir) / f'{d_metric_id}.data'
+    assert os.path.isfile(d_metric_data_path), "Distribution data should have been written"
 
+    with open(d_metric_data_path) as data_file:
+        d_metric_data = data_file.readlines()
+    
+    # this test depends on MAGIC VALUE above and flacky even with constant timestamp
+    assert len(d_metric_data) == 2, "There should be a header and exactly one data line in the data file"
+    
+    d_metric_meta = json.loads(d_metric_data[0])
+    assert "type" in d_metric_meta, "Type info should be in the header"
+    assert d_metric_meta["type"] == "TypeDistribution", "Type of distribution data should be TypeDistribution"
 
-# def test_meta_data(tmp_path):
-#     artifacts_base_dir = tmp_path #/ "logs"
-#     config = {
-#         'clients': [
-#             {
-#                 'type': 'local_storage',
-#             }
-#         ],
-#         'test_start': int(time()*1e6),
-#         'artifacts_base_dir': artifacts_base_dir
-#     }
-#     data_session = DataSession(config=config)
-#     data_session.close()
+    fields = d_metric_data[1].strip().split("\t")
+    assert len(fields) == 4, "There should be exactly 4 tab-separated fields in distribution data"
+    assert fields[0] == "0", "The timestamp field should be equal to 0"
+    assert fields[1] == "0" and fields[2] == "10" and fields[3] == "100", "Value fields should be 0, 10 and 100"
 
-# def test_raw_metric(data_session):
-#     SIZE = 100
-#     metric_obj = data_session.new_true_metric(
-#         "My Raw Metric",
-#         raw=True, aggregate=False,
-#         hostname='localhost',
-#         source='Jupyter',
-#         group='None'
-#     )
-
-#     X = (np.arange(SIZE) * 1e4).astype(int)
-
-#     df = pd.DataFrame()
-#     df['ts'] = X
-#     Xdot = X * 1e-6
-#     df['value'] = np.sin(Xdot)
-#     metric_obj.put(df)
-
-# # Агрегированная метрика
-# metric_obj = data_session.new_true_metric(
-#     "My Aggregated Metric",
-#     raw=False, aggregate=True,
-#     hostname='localhost',
-#     source='Jupyter',
-#     group='None'
-# )
-
-# df = pd.DataFrame()
-# df['ts'] = X
-# df['value'] = np.sin(X * 1e-7) + np.random.normal(size=SIZE)
-# metric_obj.put(df)
 
 # # агрегированные эвенты
 # metric_obj = data_session.new_event_metric(

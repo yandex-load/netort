@@ -80,10 +80,10 @@ class ProcessingThread(threading.Thread):
         self.client = client
         self.file_streams = {}
 
-    def __create_artifact(self, metric):
-        self.file_streams[metric.local_id] = io.open(
+    def __create_artifact(self, metric_full_name):
+        self.file_streams[metric_full_name] = io.open(
             os.path.join(
-                self.client.job.artifacts_dir, "{id}.data".format(id=metric.local_id)
+                self.client.job.artifacts_dir, f"{metric_full_name}.data"
             ),
             mode='w'
         )
@@ -103,7 +103,7 @@ class ProcessingThread(threading.Thread):
         exec_time_start = time.time()
         try:
             data_type, incoming_df = self.client.pending_queue.get_nowait()
-            df = incoming_df.copy()
+            df = incoming_df.copy()[data_type.columns]
         except queue.Empty:
             time.sleep(1)
         else:
@@ -112,35 +112,33 @@ class ProcessingThread(threading.Thread):
                 if not metric:
                     logger.warning('Received unknown metric id: %s', metric_local_id)
                     return
-                if metric.local_id not in self.file_streams:
-                    logger.debug('Creating artifact file for %s', metric.local_id)
-                    self.__create_artifact(metric)
-                    dtypes = {}
-                    for name, type_ in metric.dtypes.items():
-                        dtypes[name] = type_.__name__
+                metric_full_name = f'{data_type.table_name}_{metric_local_id}'
+                if metric_full_name not in self.file_streams:
+                    logger.debug('Creating artifact file for %s', metric_full_name)
+                    self.__create_artifact(metric_full_name)
                     this_metric_meta = {
-                        'type': metric.type.__name__,
-                        'names': metric.columns,
-                        'dtypes': dtypes,
+                        'type': data_type.__name__,
+                        'names': data_type.columns,
+                        'dtypes': df.dtypes.apply(lambda x: x.name).to_dict(),
                         'meta': metric.meta
                     }
-                    self.client.registered_meta[metric.local_id] = this_metric_meta
+                    self.client.registered_meta[metric_full_name] = this_metric_meta
                     artifact_file_header = json.dumps(this_metric_meta)
-                    self.file_streams[metric.local_id].write("%s\n" % artifact_file_header)
+                    self.file_streams[metric_full_name].write("%s\n" % artifact_file_header)
                 csv_data = df_grouped_by_id.to_csv(
                     sep=self.client.separator,
                     header=False,
                     index=False,
                     na_rep="",
-                    columns=metric.columns
+                    columns=data_type.columns
                 )
                 logger.debug('Local storage client after to csv method took %.2f ms',
                              (time.time() - exec_time_start) * 1000)
                 try:
-                    self.file_streams[metric.local_id].write(
+                    self.file_streams[metric_full_name].write(
                         csv_data
                     )
-                    self.file_streams[metric.local_id].flush()
+                    self.file_streams[metric_full_name].flush()
                 except ValueError:
                     logger.warning('Failed to write metrics to file, maybe file is already closed?', exc_info=True)
         logger.debug('Local storage client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
