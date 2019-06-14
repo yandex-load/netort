@@ -52,7 +52,6 @@ class MetricsRouter(threading.Thread):
         :type metric_data: netort.data_manager.common.interfaces.MetricData
         :rtype: pd.DataFrame
         """
-
         buffered = self.__buffer.pop(metric_data.local_id, None)
         df = pd.concat([buffered, metric_data.df]) if buffered is not None else metric_data.df
         if not last_piece:
