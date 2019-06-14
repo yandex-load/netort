@@ -16,7 +16,6 @@ import pytest
 def empty_data_frame():
     return pd.DataFrame(columns=['ts', 'value'])
 
-
 @pytest.fixture()
 def trivial_data_frame():
     return pd.DataFrame([[0, 0]], columns=['ts', 'value'])
@@ -31,6 +30,18 @@ def sin_data_frame():
     df['ts'] = X
     Xdot = X * 1e-6
     df['value'] = np.sin(Xdot)
+    return df
+
+@pytest.fixture()
+def event_data_frame():
+    SIZE = 200
+
+    np.random.seed(42)
+
+    X = (np.arange(SIZE) * 1e4).astype(int)
+    df = pd.DataFrame()
+    df['ts'] = X
+    df['value'] = np.random.choice("a quick brown fox jumped over the lazy dog".split(), len(X))
     return df
 
 @pytest.fixture()
@@ -75,7 +86,7 @@ def test_dir_created(tmp_path):
     assert 'job_meta' in meta, "Metadata should have been written to meta.json"
 
 
-def test_raw_metric(tmp_path, sin_data_frame, data_session):
+def test_raw_metric(sin_data_frame, data_session):
     metric = data_session.new_true_metric(
         "My Raw Metric",
         raw=True, aggregate=False,
@@ -112,7 +123,7 @@ def test_raw_metric(tmp_path, sin_data_frame, data_session):
     assert fields[1] == "0.0", "The value field should be equal to 0.0"
 
 
-def test_quantiles_metric(tmp_path, sin_data_frame, data_session):
+def test_quantiles_metric(sin_data_frame, data_session):
     metric = data_session.new_true_metric(
         "My Aggregated Metric",
         raw=False, aggregate=True,
@@ -184,6 +195,82 @@ def test_quantiles_metric(tmp_path, sin_data_frame, data_session):
     assert fields[0] == "0", "The timestamp field should be equal to 0"
     assert fields[1] == "0" and fields[2] == "10" and fields[3] == "100", "Value fields should be 0, 10 and 100"
 
+def test_raw_events(data_session, event_data_frame):
+    metric = data_session.new_event_metric(
+        "My Event Metric",
+        raw=True, aggregate=False,
+        hostname='localhost',
+        source='PyTest',
+        group='None'
+    )
+    metric.put(event_data_frame)
+    # TODO: make this pass. Metric should be created as soon as possible after it was created
+    # assert os.path.isdir(metric_path), "Artifacts base dir should exist after datasession have been created"
+    data_session.close()
+    with open(pathlib.Path(data_session.artifacts_dir) / 'meta.json') as meta_file:
+        meta = json.load(meta_file)
+
+    assert 'metrics' in meta, "Events stream should have been written to meta.json"
+    assert len(meta['metrics']) == 1, "Exactly one events stream should have been written to meta.json"
+
+    metric_id = list(meta['metrics'])[0]
+    metric_data_path = pathlib.Path(data_session.artifacts_dir) / f'{metric_id}.data'
+    assert os.path.isfile(metric_data_path), "Metric data should have been written"
+
+    with open(metric_data_path) as data_file:
+        metric_data = data_file.readlines()
+    
+    assert len(metric_data) == 1 + 100, "There should be one header line and exactly 100 data lines in the data file"
+    
+    metric_meta = json.loads(metric_data[0])
+    assert "type" in metric_meta, "Type info should be in the header"
+    assert metric_meta["type"] == "TypeEvents", "Type of events stream should be TypeEvents"
+
+    fields = metric_data[1].strip().split("\t")
+    assert len(fields) == 2, "There should be exactly two tab-separated fields in data"
+    assert fields[0] == "0", "The timestamp field should be equal to 0"
+    assert fields[1] == "the", "The value field should be equal to 'the'"
+
+
+def test_aggregated_events(data_session, event_data_frame):
+    metric = data_session.new_event_metric(
+        "My Event Metric",
+        raw=False, aggregate=True,
+        hostname='localhost',
+        source='PyTest',
+        group='None'
+    )
+    metric.put(event_data_frame)
+    # TODO: get rid of following line with MAGIC VALUE:
+    metric.put(pd.DataFrame([[12*1e6, 'fox']], columns=['ts', 'value']))
+    # TODO: make this pass. Metric should be created as soon as possible after it was created
+    # assert os.path.isdir(metric_path), "Artifacts base dir should exist after datasession have been created"
+    time.sleep(1)
+    data_session.close()
+    with open(pathlib.Path(data_session.artifacts_dir) / 'meta.json') as meta_file:
+        meta = json.load(meta_file)
+
+    assert 'metrics' in meta, "Events stream should have been written to meta.json"
+    assert len(meta['metrics']) == 1, "Exactly one events stream should have been written to meta.json"
+
+    metric_id = list(meta['metrics'])[0]
+    metric_data_path = pathlib.Path(data_session.artifacts_dir) / f'{metric_id}.data'
+    assert os.path.isfile(metric_data_path), "Metric data should have been written"
+
+    with open(metric_data_path) as data_file:
+        metric_data = data_file.readlines()
+    
+    assert len(metric_data) == 1 + 18, "There should be one header line and exactly 18 data lines in the data file"
+    
+    metric_meta = json.loads(metric_data[0])
+    assert "type" in metric_meta, "Type info should be in the header"
+    assert metric_meta["type"] == "TypeHistogram", "Type of events stream should be TypeHistogram"
+
+    fields = metric_data[1].strip().split("\t")
+    assert len(fields) == 3, "There should be exactly two tab-separated fields in data"
+    assert fields[0] == "0", "The timestamp field should be equal to 0"
+    assert fields[1] == "a", "The category field should be equal to 'a'"
+    assert fields[2] == "9", "The value field should be equal to 9"
 
 # # агрегированные эвенты
 # metric_obj = data_session.new_event_metric(
