@@ -187,51 +187,20 @@ class DataManager(object):
         Return:
             metric (available_metrics[0]): one of Metric
         """
-
-        metric_info = {'type': 'metrics',
-                       'name': name,
-                       }
-        if kw is not None:
-            metric_info.update(kw)
-        metric_obj = Metric(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
-        metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
-        self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
-        self.metrics[metric_obj.local_id] = metric_obj  # register metric object
-
-        # find subscribers for this metric
-        this_metric_subscribers = self.__reversed_filter(self.subscribers, metric_info)
-        if this_metric_subscribers.empty:
-            logger.debug('subscriber for metric %s not found', metric_obj.local_id)
-        else:
-            logger.debug('Found subscribers for this metric, subscribing...: %s', this_metric_subscribers)
-            # attach this metric id to discovered subscribers and select id <-> callbacks
-            this_metric_subscribers['id'] = metric_obj.local_id
-            found_callbacks = this_metric_subscribers[['id', 'callback']].set_index('id')
-            # add this metric callbacks to DataManager's callbacks
-            self.callbacks = self.callbacks.append(found_callbacks)
-        return metric_obj
+        return self._new_metric(Metric, raw, aggregate, name=name, type='metrics', **kw)
 
     def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        """
-        Create and register metric,
-        find subscribers for this metric (using meta as filter) and subscribe
+        return self._new_metric(Event, raw, aggregate, name=name, type='event', **kw)
 
-        Return:
-            metric (available_metrics[0]): one of Metric
-        """
+    def _new_metric(self, dtype, raw=True, aggregate=False, **kw):
 
-        metric_info = {'type': 'event',
-                       'name': name,
-                       }
-        if kw is not None:
-            metric_info.update(kw)
-        metric_obj = Event(metric_info, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
-        metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
-        self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
+        metric_obj = dtype(kw, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+        metric_meta = pd.DataFrame({metric_obj.local_id: kw}).T  # create metric meta
+        self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
 
         # find subscribers for this metric
-        this_metric_subscribers = self.__reversed_filter(self.subscribers, metric_info)
+        this_metric_subscribers = self.__reversed_filter(self.subscribers, kw)
         if this_metric_subscribers.empty:
             logger.debug('subscriber for metric %s not found', metric_obj.local_id)
         else:

@@ -22,14 +22,14 @@ def get_uploader(data_session, column_mapping, overall_only=False):
     """
     _router = {}
     _overall = {
-        'interval_real': data_session.new_true_metric('interval_real overall', raw=False, aggregate=True),
-        'connect_time': data_session.new_true_metric('connect_time overall', raw=False, aggregate=True),
-        'send_time': data_session.new_true_metric('send_time overall', raw=False, aggregate=True),
-        'latency': data_session.new_true_metric('latency overall', raw=False, aggregate=True),
-        'receive_time': data_session.new_true_metric('receive_time overall', raw=False, aggregate=True),
-        'interval_event': data_session.new_true_metric('interval_event overall', raw=False, aggregate=True),
-        'net_code': data_session.new_event_metric('net_code overall', raw=False, aggregate=True),
-        'proto_code': data_session.new_event_metric('proto_code overall', raw=False, aggregate=True)}
+        'interval_real': data_session.new_true_metric('interval_real overall', raw=False, aggregate=True, source='tank'),
+        'connect_time': data_session.new_true_metric('connect_time overall', raw=False, aggregate=True, source='tank'),
+        'send_time': data_session.new_true_metric('send_time overall', raw=False, aggregate=True, source='tank'),
+        'latency': data_session.new_true_metric('latency overall', raw=False, aggregate=True, source='tank'),
+        'receive_time': data_session.new_true_metric('receive_time overall', raw=False, aggregate=True, source='tank'),
+        'interval_event': data_session.new_true_metric('interval_event overall', raw=False, aggregate=True, source='tank'),
+        'net_code': data_session.new_event_metric('net_code overall', raw=False, aggregate=True, source='tank'),
+        'proto_code': data_session.new_event_metric('proto_code overall', raw=False, aggregate=True, source='tank')}
 
     def get_router(tags):
         """

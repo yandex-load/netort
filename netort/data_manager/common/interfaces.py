@@ -1,4 +1,5 @@
 # coding=utf-8
+import threading
 from collections import Counter
 
 import pandas as pd
@@ -196,3 +197,39 @@ class AbstractMetric(object):
         # df = df.set_index('metric_local_id')
         data = MetricData(df, self.data_types, self.local_id)
         self.routing_queue.put(data)
+
+
+class QueueWorker(threading.Thread):
+    """ Process data """
+    def __init__(self, _queue):
+        """
+        :type _queue: queue.Queue
+        """
+        super(QueueWorker, self).__init__()
+        self.queue = _queue
+        self._finished = threading.Event()
+        self._stopped = threading.Event()
+        self._interrupted = threading.Event()
+
+    def stop(self):
+        self._stopped.set()
+
+    def interrupt(self):
+        self._stopped.set()
+        self._interrupted.set()
+
+    def run(self):
+        while not self._stopped.is_set():
+            self._process_pending_queue()
+        while self.queue.qsize() > 0 and not self._interrupted.is_set():
+            self._process_pending_queue(progress=True)
+        while self.queue.qsize() > 0:
+            self.queue.get_nowait()
+        self._finished.set()
+
+    def _process_pending_queue(self, progress=False):
+        raise NotImplemented
+
+    def is_finished(self):
+        return self._finished.is_set()
+

@@ -1,16 +1,15 @@
 import threading
 import time
 import six
+import pandas as pd
+import logging
+from netort.data_manager.common.interfaces import Aggregated
 
 if six.PY3:
     from queue import Empty
 else:  # six.PY2
     from Queue import Empty
 
-import pandas as pd
-import logging
-
-from netort.data_manager.common.interfaces import Aggregated
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +80,9 @@ class MetricsRouter(threading.Thread):
             processed = self.reindex_to_local_id(
                 dtype.processor(unprocessed, last_piece),
                 metric_data.local_id)
-            logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
-                                                                             len(unprocessed),
-                                                                             time.time()-t))
+            # logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
+            #                                                                  len(unprocessed),
+            #                                                                  time.time()-t))
             if not processed.empty:
                 routed_data.setdefault(dtype, []).append(
                     processed
