@@ -271,31 +271,3 @@ def test_aggregated_events(data_session, event_data_frame):
     assert fields[0] == "0", "The timestamp field should be equal to 0"
     assert fields[1] == "a", "The category field should be equal to 'a'"
     assert fields[2] == "9", "The value field should be equal to 9"
-
-# # агрегированные эвенты
-# metric_obj = data_session.new_event_metric(
-#     "My Aggregated Events",
-#     raw=False, aggregate=True,
-#     hostname='localhost',
-#     source='Jupyter',
-#     group='None'
-# )
-
-# df = pd.DataFrame()
-# df['ts'] = X
-# df['value'] = np.random.choice("a quick brown fox jumped over the lazy dog".split(), len(X))
-# metric_obj.put(df)
-
-# # неагрегированные эвенты (тут Луна пока что валится)
-# # metric_obj = data_session.new_event_metric(
-# #     "My Aggregated Events",
-# #     raw=True, aggregate=False,
-# #     hostname='localhost',
-# #     source='Jupyter',
-# #     group='None'
-# # )
-
-# # df = pd.DataFrame()
-# # df['ts'] = X
-# # df['value'] = np.random.choice("a quick brown fox jumped over the lazy dog".split(), len(X))
-# # metric_obj.put(df)
