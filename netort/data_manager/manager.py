@@ -187,10 +187,10 @@ class DataManager(object):
         Return:
             metric (available_metrics[0]): one of Metric
         """
-        return self._new_metric(Metric, raw, aggregate, name=name, type='metrics', **kw)
+        return self._new_metric(Metric, raw, aggregate, name=name, **kw)
 
     def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        return self._new_metric(Event, raw, aggregate, name=name, type='event', **kw)
+        return self._new_metric(Event, raw, aggregate, name=name, **kw)
 
     def _new_metric(self, dtype, raw=True, aggregate=False, **kw):
 
@@ -282,7 +282,7 @@ class DataManager(object):
                         condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
             try:
                 res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-            except pd.core.computation.ops.UndefinedVariableError:
+            except (pd.core.computation.ops.UndefinedVariableError, ValueError):
                 return pd.DataFrame().append(subscribers_for_any)
             else:
                 return res.append(subscribers_for_any)
