@@ -83,7 +83,7 @@ class ProcessingThread(threading.Thread):
     def __create_artifact(self, metric_full_name):
         self.file_streams[metric_full_name] = io.open(
             os.path.join(
-                self.client.job.artifacts_dir, f"{metric_full_name}.data"
+                self.client.job.artifacts_dir, "{}.data".format(metric_full_name)
             ),
             mode='w'
         )
@@ -100,7 +100,6 @@ class ProcessingThread(threading.Thread):
         self._finished.set()
 
     def __process_pending_queue(self):
-        exec_time_start = time.time()
         try:
             data_type, incoming_df = self.client.pending_queue.get_nowait()
             df = incoming_df.copy()[data_type.columns]
@@ -112,7 +111,7 @@ class ProcessingThread(threading.Thread):
                 if not metric:
                     logger.warning('Received unknown metric id: %s', metric_local_id)
                     return
-                metric_full_name = f'{data_type.table_name}_{metric_local_id}'
+                metric_full_name = '{}_{}'.format(data_type.table_name, metric_local_id)
                 if metric_full_name not in self.file_streams:
                     logger.debug('Creating artifact file for %s', metric_full_name)
                     self.__create_artifact(metric_full_name)
@@ -124,24 +123,21 @@ class ProcessingThread(threading.Thread):
                     }
                     self.client.registered_meta[metric_full_name] = this_metric_meta
                     artifact_file_header = json.dumps(this_metric_meta)
-                    self.file_streams[metric_full_name].write("%s\n" % artifact_file_header)
+                    self.file_streams[metric_full_name].write(u"%s\n" % artifact_file_header)
                 csv_data = df_grouped_by_id.to_csv(
                     sep=self.client.separator,
                     header=False,
                     index=False,
                     na_rep="",
-                    columns=data_type.columns
+                    columns=data_type.columns,
                 )
-                logger.debug('Local storage client after to csv method took %.2f ms',
-                             (time.time() - exec_time_start) * 1000)
                 try:
                     self.file_streams[metric_full_name].write(
-                        csv_data
+                        unicode(csv_data)
                     )
                     self.file_streams[metric_full_name].flush()
                 except ValueError:
                     logger.warning('Failed to write metrics to file, maybe file is already closed?', exc_info=True)
-        logger.debug('Local storage client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
 
     def is_finished(self):
         return self._finished

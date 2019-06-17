@@ -71,16 +71,14 @@ def main():
     parser.add_argument('--db_name', type=str, help='ClickHouse database name', default='luna_test')
     args = parser.parse_args()
 
-    clients = [{'type': 'luna', 'api_address': args.url, 'db_name': args.db_name}]
+    clients = [
+        {'type': 'luna', 'api_address': args.url, 'db_name': args.db_name},
+        {'type': 'local_storage'}
+    ]
     data_session = DataSession({'clients': clients})
     data_session.update_job({'name': args.name})
     print('Test name: %s' % args.name)
-    # col_map = {name: (name, 'fractions') for name in ['connect_time', 'send_time',
-    #            'latency', 'receive_time',
-    #            'interval_event']}
-    metrics_map = {
-        'interval_real', 'connect_time', 'send_time', 'latency',
-                   'receive_time', 'interval_event', 'net_code', 'proto_code'}
+
     col_map_aggr = {name: 'metric %s' % name for name in
                     ['interval_real', 'connect_time', 'send_time', 'latency',
                      'receive_time', 'interval_event']}
@@ -106,7 +104,6 @@ def main():
                 break
     data_session.close()
 
-    # <type 'list'>: ['848f1769e16843f49d4f1b5b43c26124', '700b9fbb626c492b8fe16793ba659561', '4c22258a07984acfaf92d67e13c050a2', '1c3f1af845b842e7ae63554f74c89661', '17b8fd1da726452ba6abb9261a09d53f']
 
 if __name__ == '__main__':
     main()
