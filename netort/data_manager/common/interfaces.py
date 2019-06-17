@@ -156,7 +156,11 @@ class MetricData(object):
         return any([dtype.is_aggregated() for dtype in self.data_types])
 
     def __repr__(self):
-        return f"MetricData: aggregated={'yes' if self.is_aggregated else 'no'}, data types={self.data_types.__repr__()}\n{self.df.__repr__()}"
+        return "MetricData: aggregated={}, data types={}\n{}".format(
+            'yes' if self.is_aggregated else 'no',
+            self.data_types.__repr__(),
+            self.df.__repr__()
+        )
 
 
 class AbstractMetric(object):
