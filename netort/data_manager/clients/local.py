@@ -7,6 +7,7 @@ import json
 import threading
 import queue
 import time
+from builtins import str
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ class ProcessingThread(threading.Thread):
                 )
                 try:
                     self.file_streams[metric_full_name].write(
-                        unicode(csv_data)
+                        str(csv_data)
                     )
                     self.file_streams[metric_full_name].flush()
                 except ValueError:
