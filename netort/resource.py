@@ -213,7 +213,7 @@ class HttpOpener(object):
                 return open(downloaded_f_path, 'rb')
 
     @retry
-    def download_file(self, use_cache):
+    def download_file(self, use_cache, try_ungzip=False):
         tmpfile_path = self.tmpfile_path()
         if os.path.exists(tmpfile_path) and use_cache:
             logger.info(
@@ -232,13 +232,24 @@ class HttpOpener(object):
                 f.write(data.content)
                 f.close()
                 logger.info("Successfully downloaded resource %s to %s", self.url, tmpfile_path)
+        if try_ungzip:
+            try:
+                if tmpfile_path.endswith('.gz'):
+                    ungzippedfile_path = tmpfile_path[:-3]
+                else:
+                    ungzippedfile_path = tmpfile_path + '_ungzipped'
+                with gzip.open(tmpfile_path) as gzf, open(ungzippedfile_path, 'wb') as f:
+                    f.write(gzf.read())
+                tmpfile_path = ungzippedfile_path
+            except:
+                logger.exception('')
         self._filename = tmpfile_path
         return tmpfile_path
 
     def tmpfile_path(self):
         hasher = hashlib.md5()
         hasher.update(self.hash)
-        return "/tmp/http_%s.downloaded_resource" % hasher.hexdigest()
+        return "/tmp/http_%s.downloaded_resource%s" % (hasher.hexdigest(), '.gz' if self.gzip else '')
 
     @retry
     def get_request_info(self):
