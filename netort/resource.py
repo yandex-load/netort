@@ -213,7 +213,7 @@ class HttpOpener(object):
                 return open(downloaded_f_path, 'rb')
 
     @retry
-    def download_file(self, use_cache):
+    def download_file(self, use_cache, try_ungzip=False):
         tmpfile_path = self.tmpfile_path()
         if os.path.exists(tmpfile_path) and use_cache:
             logger.info(
@@ -232,6 +232,17 @@ class HttpOpener(object):
                 f.write(data.content)
                 f.close()
                 logger.info("Successfully downloaded resource %s to %s", self.url, tmpfile_path)
+        if try_ungzip:
+            try:
+                if tmpfile_path.endswith('.gz'):
+                    ungzippedfile_path = tmpfile_path[:-3]
+                else:
+                    ungzippedfile_path = tmpfile_path + '_ungzipped'
+                with gzip.open(tmpfile_path) as gzf, open(ungzippedfile_path, 'wb') as f:
+                    f.write(gzf.read())
+                tmpfile_path = ungzippedfile_path
+            except IOError as ioe:
+                logger.error('Failed trying to unzip downloaded resource %s' % repr(ioe))
         self._filename = tmpfile_path
         return tmpfile_path
 
