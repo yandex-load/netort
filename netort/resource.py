@@ -249,7 +249,7 @@ class HttpOpener(object):
     def tmpfile_path(self):
         hasher = hashlib.md5()
         hasher.update(self.hash)
-        return "/tmp/http_%s.downloaded_resource%s" % (hasher.hexdigest(), '.gz' if self.gzip else '')
+        return "/tmp/http_%s.downloaded_resource" % hasher.hexdigest()
 
     @retry
     def get_request_info(self):
