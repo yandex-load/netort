@@ -1,3 +1,4 @@
+# coding=utf-8
 from ..common.interfaces import AbstractMetric
 import numpy as np
 

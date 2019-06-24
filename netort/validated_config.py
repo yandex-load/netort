@@ -78,7 +78,7 @@ class ValidatedConfig(object):
         try:
             self.validated[section][option]
         except KeyError:
-            if default:
+            if default is not None:
                 return default
             else:
                 raise KeyError()

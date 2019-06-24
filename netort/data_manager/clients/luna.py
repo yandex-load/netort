@@ -1,4 +1,6 @@
-from ..common.interfaces import AbstractClient
+from requests import HTTPError, ConnectionError
+
+from ..common.interfaces import AbstractClient, QueueWorker
 from ..common.util import pretty_print
 
 from retrying import retry, RetryError
@@ -30,7 +32,6 @@ RETRY_ARGS = dict(
 def send_chunk(session, req, timeout=5):
     r = session.send(req, verify=False, timeout=timeout)
     logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
-    r.raise_for_status()
     return r
 
 
@@ -40,16 +41,18 @@ class LunaClient(AbstractClient):
     upload_metric_path = '/upload_metric/?query='  # production
     create_job_path = '/create_job/'
     update_job_path = '/update_job/'
-    dbname = 'luna'
+    close_job_path = '/close_job/'
     symlink_artifacts_path = 'luna'
 
     def __init__(self, meta, job):
         super(LunaClient, self).__init__(meta, job)
         logger.debug('Luna client local id: %s', self.local_id)
+        self.dbname = meta.get('db_name', 'luna')
         self.failed = threading.Event()
         self.public_ids = {}
         self.luna_columns = ['key_date', 'tag']
         self.key_date = "{key_date}".format(key_date=datetime.datetime.now().strftime("%Y-%m-%d"))
+        self._interrupted = threading.Event()
         self.register_worker = RegisterWorkerThread(self)
         self.register_worker.start()
         self.worker = WorkerThread(self)
@@ -75,14 +78,17 @@ class LunaClient(AbstractClient):
                 logger.debug('Failed to create Luna job', exc_info=True)
                 logger.warning('Failed to create Luna job')
                 self.failed.set()
+            except HTTPError:
+                self._interrupted.set()
+                logger.error("Luna service unavailable", exc_info=True)
             else:
                 return self._job_number
         else:
             return self._job_number
 
-    def put(self, df):
+    def put(self, data_type, df):
         if not self.failed.is_set():
-            self.pending_queue.put(df)
+            self.pending_queue.put((data_type, df))
         else:
             logger.debug('Skipped incoming data chunk due to failures')
 
@@ -120,6 +126,7 @@ class LunaClient(AbstractClient):
 
         response = send_chunk(self.session, prepared_req)
         logger.debug('Luna create job status: %s', response.status_code)
+        response.raise_for_status()
         logger.debug('Answ data: %s', response.content)
         job_id = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
         if not job_id:
@@ -135,7 +142,7 @@ class LunaClient(AbstractClient):
             "{api_address}{path}?job={job}".format(
                 api_address=self.api_address,
                 path=self.update_job_path,
-                job=self._job_number
+                job=self.job_number
             ),
         )
         req.data = meta
@@ -170,6 +177,20 @@ class LunaClient(AbstractClient):
             logger.debug('Update metric status: %s', response.status_code)
             logger.debug('Answ data: %s', response.content)
 
+    def _close_job(self):
+        req = requests.Request(
+            'GET',
+            "{api_address}{path}".format(
+                api_address=self.api_address,
+                path=self.close_job_path,
+            ),
+            params={'job': self._job_number}
+        )
+        prepared_req = req.prepare()
+        logger.debug('Prepared close_job request:\n%s', pretty_print(prepared_req))
+        response = send_chunk(self.session, prepared_req)
+        logger.debug('Update job status: %s', response.status_code)
+
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
         link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
@@ -201,101 +222,98 @@ class LunaClient(AbstractClient):
         logger.info('Joining luna client metric registration thread...')
         self.register_worker.join()
         self.worker.stop()
-        while not self.worker.is_finished():
+        if not self.worker.is_finished():
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
-        # FIXME hardcored host
+        self._close_job()
+        # FIXME hardcoded host
         # FIXME we dont know front hostname, because api address now is clickhouse address
         logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
         logger.info('Luna client done its work')
 
+    def interrupt(self):
+        logger.warning('Luna client work was interrupted.')
+        self.put = lambda *a, **kw: None
+        self.register_worker.interrupt()
+        self.worker.interrupt()
 
-class RegisterWorkerThread(threading.Thread):
+
+class RegisterWorkerThread(QueueWorker):
     """ Register metrics metadata, get public_id from luna and create map local_id <-> public_id """
     def __init__(self, client):
-        super(RegisterWorkerThread, self).__init__()
-        self._finished = threading.Event()
-        self._interrupted = threading.Event()
+        """
+        :type client: LunaClient
+        """
+        super(RegisterWorkerThread, self).__init__(queue.Queue())
         self.client = client
         self.session = requests.session()
+        for callback, ids in self.client.job.manager.callbacks.groupby('callback', sort=False):
+            if callback == self.client.put:
+                for id_ in ids.index:
+                    if id_ not in self.client.public_ids:
+                        metric = self.client.job.manager.get_metric_by_id(id_)
+                        self.queue.put(metric)
 
-    def run(self):
-        while not self._interrupted.is_set():
-            # find this client's callback, find unregistered metrics for this client and register
-            for callback, ids in self.client.job.manager.callbacks.groupby('callback', sort=False):
-                if callback == self.client.put:
-                    for id_ in ids.index:
-                        if id_ not in self.client.public_ids:
-                            metric = self.client.job.manager.get_metric_by_id(id_)
-                            metric.tag = self.register_metric(metric)
-                            logger.debug(
-                                'Successfully received tag %s for metric.local_id: %s',
-                                metric.tag, metric.local_id
-                            )
-                            self.client.public_ids[metric.local_id] = metric.tag
-            time.sleep(1)
-        logger.info('Metric registration thread interrupted!')
-        self._finished.set()
+    def register(self, metric):
+        self.queue.put(metric)
 
-    def register_metric(self, metric):
+    def _process_pending_queue(self, progress=False):
+        try:
+            metric = self.queue.get_nowait()
+            if metric.local_id in self.client.public_ids:
+                return
+            metric.tag = self._register_metric(metric)
+            logger.debug(
+                'Successfully received tag %s for metric.local_id: %s',
+                metric.tag, metric.local_id)
+            self.client.public_ids[metric.local_id] = metric.tag
+        except (RetryError, HTTPError, ConnectionError):
+            logger.error("Luna service unavailable", exc_info=True)
+            self.client.interrupt()
+        except queue.Empty:
+            time.sleep(0.5)
+
+    def _register_metric(self, metric):
+        json = {
+            'job': self.client.job_number,
+            'type': metric.type.table_name,
+            'types': [t.table_name for t in metric.data_types],
+            'local_id': metric.local_id,
+            'meta': metric.meta
+        }
         req = requests.Request(
             'POST',
             "{api_address}{path}".format(
                 api_address=self.client.api_address,
                 path=self.client.create_metric_path
-            )
-            # not json handler anymore
-            # headers = {"Content-Type": "application/json"}
+            ),
+            json=json
         )
-        req.data = {
-            'job': self.client.job_number,
-            'type': metric.type,
-            'local_id': metric.local_id
-        }
-        req.data.update(metric.meta)
         prepared_req = req.prepare()
-        logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
+        logger.debug('Prepared create_metric request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
+        response.raise_for_status()
         if not response.content:
-            logger.debug('Luna did not return uniq_id for metric registration: %s', response.content)
+            raise HTTPError('Luna did not return uniq_id for metric registration: %s', response.content)
         else:
             return response.content.decode('utf-8') if six.PY3 else response.content
 
-    def is_finished(self):
-        return self._finished
 
-    def stop(self):
-        logger.info('Metric registration thread get interrupt signal')
-        self._interrupted.set()
-
-
-class WorkerThread(threading.Thread):
+class WorkerThread(QueueWorker):
     """ Process data """
     def __init__(self, client):
-        super(WorkerThread, self).__init__()
-        self._finished = threading.Event()
-        self._interrupted = threading.Event()
+        super(WorkerThread, self).__init__(client.pending_queue)
         self.client = client
         self.session = requests.session()
 
-    def run(self):
-        while not self._interrupted.is_set():
-            self.__process_pending_queue()
-        logger.info(
-            'Luna uploader finishing work and '
-            'trying to send the rest of data, qsize: %s', self.client.pending_queue.qsize())
-        while self.client.pending_queue.qsize() > 1:
-            self.__process_pending_queue()
-        self._finished.set()
-
-    def __process_pending_queue(self):
-        exec_time_start = time.time()
+    def _process_pending_queue(self, progress=False):
         try:
-            incoming_df = self.client.pending_queue.get_nowait()
-            df = incoming_df.copy()
+            data_type, df = self.queue.get_nowait()
+            if progress:
+                logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
         except queue.Empty:
-            time.sleep(1)
+            time.sleep(0.2)
         else:
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
                 metric = self.client.job.manager.get_metric_by_id(metric_local_id)
@@ -305,19 +323,20 @@ class WorkerThread(threading.Thread):
                 if metric.local_id in self.client.public_ids:
                     df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
                     df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
+                    # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
                     body = df_grouped_by_id.to_csv(
                         sep='\t',
                         header=False,
                         index=False,
                         na_rep='',
-                        columns=self.client.luna_columns + metric.columns
+                        columns=self.client.luna_columns + data_type.columns
                     )
                     req = requests.Request(
                         'POST', "{api}{data_upload_handler}{query}".format(
                             api=self.client.api_address, # production proxy
                             data_upload_handler=self.client.upload_metric_path,
-                            query="INSERT INTO {table} FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=metric.type) # production
+                            query="INSERT INTO {table}_buffer FORMAT TSV".format(
+                                table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
                             )
                         )
                     )
@@ -328,22 +347,18 @@ class WorkerThread(threading.Thread):
                     req.data = body
                     prepared_req = req.prepare()
                     try:
-                        send_chunk(self.session, prepared_req)
-                    except RetryError:
-                        logger.warning('Failed to upload data to luna. Dropped some data.')
+                        resp = send_chunk(self.session, prepared_req)
+                        resp.raise_for_status()
+                    except (RetryError, HTTPError, ConnectionError) as e:
+                        logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
+                                       format(resp.content if isinstance(e, HTTPError) else 'no response'))
                         logger.debug(
                             'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data: \n%s', df_grouped_by_id, exc_info=True
+                            'Dropped data head: \n%s', df_grouped_by_id.head(), exc_info=True
                         )
-                        return
+                        self.client.interrupt()
                 else:
                     # no public_id yet, put it back
-                    self.client.pending_queue.put(df_grouped_by_id)
-        logger.debug('Luna client processing took %.2f ms', (time.time() - exec_time_start) * 1000)
-
-    def is_finished(self):
-        return self._finished
-
-    def stop(self):
-        logger.info('Luna uploader got interrupt signal')
-        self._interrupted.set()
+                    self.client.put(data_type, df)
+                    logger.debug('No public id for metric {}'.format(metric.local_id))
+                    self.client.register_worker.register(metric)

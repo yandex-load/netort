@@ -3,8 +3,10 @@ import logging
 import uuid
 import time
 import os
-import pwd
+import getpass
 import six
+from netort.data_manager.metrics import Metric, Event
+
 if six.PY3:
     from queue import Queue
 else:  # six.PY2
@@ -13,7 +15,6 @@ else:  # six.PY2
 import pandas as pd
 
 from .clients import available_clients
-from .metrics import available_metrics
 from .router import MetricsRouter
 
 import warnings
@@ -73,13 +74,11 @@ class DataSession(object):
             else:
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
-    # FIXME: move parameters from dict to args/kwargs, describe in docstring
-    def new_metric(self, meta):
-        return self.manager.new_metric(meta)
+    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
+        return self.manager.new_true_metric(name, raw, aggregate, **kw)
 
-    # FIXME: remove specific client code (netort knows nothing about Yandex.Tank)
-    def new_tank_metric(self, _type, name, hostname=None, group=None, source=None, *kw):
-        return self.manager.new_tank_metric(_type, name, hostname, group, source, *kw)
+    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
+        return self.manager.new_event_metric(name, raw, aggregate, **kw)
 
     def subscribe(self, callback, filter_):
         return self.manager.subscribe(callback, filter_)
@@ -120,7 +119,7 @@ class DataSession(object):
 
     def __get_operator(self):
         try:
-            return self.config.get('operator') or pwd.getpwuid(os.geteuid())[0]
+            return self.config.get('operator') or getpass.getuser()
         except:  # noqa: E722
             logger.error(
                 "Couldn't get username from the OS. Please, set the 'operator' option explicitly in your config "
@@ -143,6 +142,17 @@ class DataSession(object):
                 logger.debug('Client closed: %s', client)
         logger.info('DataSession finished!')
 
+    def interrupt(self):
+        self.manager.interrupt()
+        for client in self.clients:
+            try:
+                client.close()
+            except Exception:
+                logger.warning('Client %s failed to close', client)
+            else:
+                logger.debug('Client closed: %s', client)
+        logger.info('DataSession finished!')
+
 
 class DataManager(object):
     """DataManager routes data to subscribers using metrics meta as a filter. When someone calls
@@ -152,7 +162,7 @@ class DataManager(object):
     MetricsRouter is a facility that DataManager uses for passing incoming data to subscribers.
 
     Attributes:
-        metrics (list): All registered metrics for DataManager session
+        metrics (dict): All registered metrics for DataManager session
         subscribers (pd.DataFrame): All registered subscribers for DataManager session
         callbacks (pd.DataFrame): callbacks for metric ids <-> subscribers' callbacks, used by router
         routing_queue (Queue): incoming unrouted metrics data,
@@ -169,7 +179,7 @@ class DataManager(object):
         self.router = MetricsRouter(self)
         self.router.start()
 
-    def new_metric(self, meta):
+    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -177,70 +187,30 @@ class DataManager(object):
         Return:
             metric (available_metrics[0]): one of Metric
         """
-        type_ = meta.get('type')
-        if not type_:
-            raise ValueError('Metric type should be defined.')
+        return self._new_metric(Metric, raw, aggregate, name=name, **kw)
 
-        if type_ in available_metrics:
-            metric_obj = available_metrics[type_](meta, self.routing_queue)  # create metric object
-            metric_meta = pd.DataFrame({metric_obj.local_id: meta}).T  # create metric meta
-            self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
-            self.metrics[metric_obj.local_id] = metric_obj  # register metric object
+    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
+        return self._new_metric(Event, raw, aggregate, name=name, **kw)
 
-            # find subscribers for this metric
-            this_metric_subscribers = self.__reversed_filter(self.subscribers, meta)
-            if this_metric_subscribers.empty:
-                logger.debug('subscriber for metric %s not found', metric_obj.local_id)
-            else:
-                logger.debug('Found subscribers for this metric, subscribing...: %s', this_metric_subscribers)
-                # attach this metric id to discovered subscribers and select id <-> callbacks
-                this_metric_subscribers['id'] = metric_obj.local_id
-                found_callbacks = this_metric_subscribers[['id', 'callback']].set_index('id')
-                # add this metric callbacks to DataManager's callbacks
-                self.callbacks = self.callbacks.append(found_callbacks)
-            return metric_obj
+    def _new_metric(self, dtype, raw=True, aggregate=False, **kw):
+
+        metric_obj = dtype(kw, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+        metric_meta = pd.DataFrame({metric_obj.local_id: kw}).T  # create metric meta
+        self.metrics_meta.append(metric_meta)  # register metric meta
+        self.metrics[metric_obj.local_id] = metric_obj  # register metric object
+
+        # find subscribers for this metric
+        this_metric_subscribers = self.__reversed_filter(self.subscribers, kw)
+        if this_metric_subscribers.empty:
+            logger.debug('subscriber for metric %s not found', metric_obj.local_id)
         else:
-            raise NotImplementedError('Unknown metric type: %s' % type_)
-
-    # FIXME: remove specific client code (netort knows nothing about Yandex.Tank)
-    def new_tank_metric(self, _type, name, hostname=None, group=None, source=None, *kw):
-        """
-        Create and register metric,
-        find subscribers for this metric (using meta as filter) and subscribe
-
-        Return:
-            metric (available_metrics[0]): one of Metric
-        """
-        if not _type:
-            raise ValueError('Metric type should be defined.')
-
-        if _type in available_metrics:
-            metric_obj = available_metrics[_type](None, self.routing_queue)  # create metric object
-            metric_info = {'type': _type,
-                           'source': source,
-                           'name': name,
-                           'hostname': hostname,
-                           'group': group}
-            if kw is not None:
-                metric_info.update(kw)
-            metric_meta = pd.DataFrame({metric_obj.local_id: metric_info}).T  # create metric meta
-            self.metrics_meta = self.metrics_meta.append(metric_meta)  # register metric meta
-            self.metrics[metric_obj.local_id] = metric_obj  # register metric object
-
-            # find subscribers for this metric
-            this_metric_subscribers = self.__reversed_filter(self.subscribers, metric_info)
-            if this_metric_subscribers.empty:
-                logger.debug('subscriber for metric %s not found', metric_obj.local_id)
-            else:
-                logger.debug('Found subscribers for this metric, subscribing...: %s', this_metric_subscribers)
-                # attach this metric id to discovered subscribers and select id <-> callbacks
-                this_metric_subscribers['id'] = metric_obj.local_id
-                found_callbacks = this_metric_subscribers[['id', 'callback']].set_index('id')
-                # add this metric callbacks to DataManager's callbacks
-                self.callbacks = self.callbacks.append(found_callbacks)
-            return metric_obj
-        else:
-            raise NotImplementedError('Unknown metric type: %s' % _type)
+            logger.debug('Found subscribers for this metric, subscribing...: %s', this_metric_subscribers)
+            # attach this metric id to discovered subscribers and select id <-> callbacks
+            this_metric_subscribers['id'] = metric_obj.local_id
+            found_callbacks = this_metric_subscribers[['id', 'callback']].set_index('id')
+            # add this metric callbacks to DataManager's callbacks
+            self.callbacks = self.callbacks.append(found_callbacks)
+        return metric_obj
 
     def subscribe(self, callback, filter_):
         """
@@ -312,13 +282,17 @@ class DataManager(object):
                         condition.append('{key} == "{value}"'.format(key=meta_tag, value=meta_value))
             try:
                 res = filterable.query(" {operation} ".format(operation=logic_operation).join(condition))
-            except pd.core.computation.ops.UndefinedVariableError:
+            except (pd.core.computation.ops.UndefinedVariableError, ValueError):
                 return pd.DataFrame().append(subscribers_for_any)
             else:
                 return res.append(subscribers_for_any)
 
     def close(self):
         self.router.close()
+
+    def interrupt(self):
+        self.router.interrupt()
+        self.router.join()
 
 
 def usage_sample():
@@ -347,7 +321,7 @@ def usage_sample():
         'some_meta_key': 'some_meta_value'
     }
 
-    metric_obj = data_session.new_metric(metric_meta)
+    metric_obj = data_session.new_true_metric('name', **metric_meta)
     time.sleep(1)
     df = pd.DataFrame([[123, 123.123, "trash"]], columns=['ts', 'value', 'trash'])
     metric_obj.put(df)
