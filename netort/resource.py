@@ -241,8 +241,8 @@ class HttpOpener(object):
                 with gzip.open(tmpfile_path) as gzf, open(ungzippedfile_path, 'wb') as f:
                     f.write(gzf.read())
                 tmpfile_path = ungzippedfile_path
-            except:
-                logger.exception('')
+            except IOError as ioe:
+                logger.error('Failed trying to unzip downloaded resource %s' % repr(ioe))
         self._filename = tmpfile_path
         return tmpfile_path
 

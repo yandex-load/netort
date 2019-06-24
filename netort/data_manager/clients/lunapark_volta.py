@@ -138,9 +138,9 @@ class LunaparkVoltaClient(AbstractClient):
                 'Symlink %s/%s created for job: %s', self.symlink_artifacts_path, self.job_number, self.job.job_id
             )
 
-    def put(self, df):
+    def put(self, data_type, df):
         if not self.failed.is_set():
-            self.pending_queue.put(df)
+            self.pending_queue.put((data_type, df))
         else:
             logger.debug('Skipped incoming data chunk due to failures')
 
