@@ -22,9 +22,8 @@ logger = logging.getLogger(__name__)
 
 RETRY_ARGS = dict(
     wrap_exception=True,
-    stop_max_delay=10000,
-    wait_fixed=1000,
-    stop_max_attempt_number=5
+    stop_max_delay=30000,
+    stop_max_attempt_number=10
 )
 
 
