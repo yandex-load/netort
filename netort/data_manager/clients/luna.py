@@ -10,10 +10,15 @@ import logging
 import requests
 import threading
 import time
-import queue
+import six
+import pandas as pd
 import datetime
 import os
 import six
+if six.PY2:
+    import queue
+else:
+    import Queue as queue
 
 requests.packages.urllib3.disable_warnings()
 
@@ -26,6 +31,10 @@ RETRY_ARGS = dict(
     wait_fixed=1000,
     stop_max_attempt_number=5
 )
+
+SLEEP_ON_EMPTY = 0.2  # pause in seconds before checking empty queue on new items
+MAX_DF_LENGTH = 20000  # Size of chunk is 20k rows, it's approximately 1Mb in csv
+MAX_DF_WAIT = 15  # MAX_DF_WAIT * SLEEP_ON EMPTY is time before sending 'small' chunk not exceeding 20k rows
 
 
 @retry(**RETRY_ARGS)
@@ -304,61 +313,111 @@ class WorkerThread(QueueWorker):
     """ Process data """
     def __init__(self, client):
         super(WorkerThread, self).__init__(client.pending_queue)
+        self.data = {}
         self.client = client
         self.session = requests.session()
 
     def _process_pending_queue(self, progress=False):
-        try:
-            data_type, df = self.queue.get_nowait()
-            if progress:
-                logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
-        except queue.Empty:
-            time.sleep(0.2)
-        else:
-            for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
-                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
-                if not metric:
-                    logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
-                    return
-                if metric.local_id in self.client.public_ids:
-                    df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
-                    df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
-                    # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
-                    body = df_grouped_by_id.to_csv(
-                        sep='\t',
-                        header=False,
-                        index=False,
-                        na_rep='',
-                        columns=self.client.luna_columns + data_type.columns
-                    )
-                    req = requests.Request(
-                        'POST', "{api}{data_upload_handler}{query}".format(
-                            api=self.client.api_address, # production proxy
-                            data_upload_handler=self.client.upload_metric_path,
-                            query="INSERT INTO {table}_buffer FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
-                            )
-                        )
-                    )
-                    req.headers = {
-                        'X-ClickHouse-User': 'lunapark',
-                        'X-ClickHouse-Key': 'lunapark'
-                    }
-                    req.data = body
-                    prepared_req = req.prepare()
-                    try:
-                        resp = send_chunk(self.session, prepared_req)
-                        resp.raise_for_status()
-                    except (RetryError, HTTPError, ConnectionError) as e:
-                        logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
-                                       format(resp.content if isinstance(e, HTTPError) else 'no response'))
-                        logger.debug(
-                            'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data head: \n%s', df_grouped_by_id.head(), exc_info=True
-                        )
-                        self.client.interrupt()
+        self.data['max_length'] = 0
+        empty_queue_count = 0
+        while self.data['max_length'] < MAX_DF_LENGTH and empty_queue_count < MAX_DF_WAIT:
+            try:
+                data_type, raw_df = self.queue.get_nowait()
+                if progress:
+                    logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
+            except queue.Empty:
+                time.sleep(SLEEP_ON_EMPTY)
+            else:
+                df = self.__update_df(data_type, raw_df)
+                if not df:
+                    continue
+                if not self.data.get(data_type):
+                    self.data[data_type.table_name] = [df[data_type.columns]]
+                    self.data['max_length'] = self.__update_max_length(df.shape[0])
                 else:
-                    # no public_id yet, put it back
-                    self.client.put(data_type, df)
-                    logger.debug('No public id for metric {}'.format(metric.local_id))
-                    self.client.register_worker.register(metric)
+                    self.data[data_type.table_name].append(df[data_type.columns])
+                    self.data['max_length'] = self.__update_max_length(df.shape[0])
+
+        for table_name, data in self.data.items():
+            if table_name is not 'max_length':
+                result_df = pd.concat(data)
+                try:
+                    self.__upload_data(table_name, result_df)
+                except RetryError:
+                    logger.warning('Failed to upload data to luna backend after consecutive retries. '
+                                   'Attempt to send data in two halves')
+                    try:
+                        self.__upload_data(table_name, result_df.head(len(result_df)//2))
+                        self.__upload_data(table_name, result_df.tail(len(result_df) - len(result_df)//2))
+                    except RetryError:
+                        logger.warning('Failed to upload data to luna backend after consecutive retries. Sorry.')
+        self.data = {}
+
+    def __update_max_length(self, new_length):
+        return new_length if self.data['max_length'] < new_length else self.data['max_length']
+
+    def __update_df(self, data_type, df):
+        for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
+            metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+
+            if not metric:
+                logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
+                return
+
+            if metric.local_id not in self.client.public_ids:
+                # no public_id yet, put it back
+                self.client.put(data_type, df)
+                logger.debug('No public id for metric {}'.format(metric.local_id))
+                self.client.register_worker.register(metric)
+                return
+
+            df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
+            df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
+            # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
+            # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
+            return df_grouped_by_id
+
+    def __upload_data(self, table_name, df):
+        body = df.to_csv(
+            sep='\t',
+            header=False,
+            index=False,
+            na_rep='',
+            columns=self.client.luna_columns + df.columns.values.tolist()
+        )
+        logger.debug('Body:\n{}'.format(body))
+        req = requests.Request(
+            'POST', "{api}{data_upload_handler}{query}".format(
+                api=self.client.api_address,  # production proxy
+                data_upload_handler=self.client.upload_metric_path,
+                query="INSERT INTO {table} FORMAT TSV".format(
+                    table="{db}.{type}".format(db=self.client.dbname, type=table_name)  # production
+                )
+            )
+        )
+        req.headers = {
+            'X-ClickHouse-User': 'lunapark',
+            'X-ClickHouse-Key': 'lunapark'
+        }
+        req.data = body
+        prepared_req = req.prepare()
+        # logger.debug('Prepared request: %s' % '{}\n{}\n{}\n\n{}'.format(
+        #     '-----------START-----------',
+        #     prepared_req.method + ' ' + prepared_req.url,
+        #     '\n'.join('{}: {}'.format(k, v) for k, v in prepared_req.headers.items()),
+        #     prepared_req.body,
+        # ))
+
+        try:
+            resp = send_chunk(self.session, prepared_req)
+            resp.raise_for_status()
+        except (RetryError, HTTPError, ConnectionError) as e:
+            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
+                           format(resp.content if isinstance(e, HTTPError) else 'no response'))
+            logger.debug(
+                'Failed to upload data to luna backend after consecutive retries.\n'
+                'Dropped data head: \n%s', df.head(), exc_info=True
+            )
+            self.client.interrupt()
+
+            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.format(resp.content))
