@@ -329,7 +329,7 @@ class WorkerThread(QueueWorker):
                 time.sleep(SLEEP_ON_EMPTY)
             else:
                 df = self.__update_df(data_type, raw_df)
-                if not df:
+                if df.empty:
                     continue
                 if not self.data.get(data_type):
                     self.data[data_type.table_name] = [df[data_type.columns]]
@@ -362,14 +362,14 @@ class WorkerThread(QueueWorker):
 
             if not metric:
                 logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
-                return
+                return pd.DataFrame([])
 
             if metric.local_id not in self.client.public_ids:
                 # no public_id yet, put it back
                 self.client.put(data_type, df)
                 logger.debug('No public id for metric {}'.format(metric.local_id))
                 self.client.register_worker.register(metric)
-                return
+                return pd.DataFrame([])
 
             df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
             df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
