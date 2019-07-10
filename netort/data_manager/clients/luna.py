@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 
 RETRY_ARGS = dict(
     wrap_exception=True,
-    stop_max_delay=10000,
-    wait_fixed=1000,
-    stop_max_attempt_number=5
+    stop_max_delay=30000,
+    wait_fixed=3000,
+    stop_max_attempt_number=10
 )
 
 SLEEP_ON_EMPTY = 0.2  # pause in seconds before checking empty queue on new items
@@ -42,6 +42,16 @@ def send_chunk(session, req, timeout=5):
     r = session.send(req, verify=False, timeout=timeout)
     logger.debug('Request %s code %s. Text: %s', r.url, r.status_code, r.text)
     return r
+
+
+def if_not_failed(func):
+    def wrapped(self, *a, **kw):
+        if self.failed.is_set():
+            logger.warning('Luna client is disabled')
+            return
+        else:
+            return func(self, *a, **kw)
+    return wrapped
 
 
 class LunaClient(AbstractClient):
@@ -83,17 +93,11 @@ class LunaClient(AbstractClient):
             try:
                 self._job_number = self.create_job()
                 self.__test_id_link_to_jobno()
-            except RetryError:
-                logger.debug('Failed to create Luna job', exc_info=True)
-                logger.warning('Failed to create Luna job')
+            except (RetryError, HTTPError):
+                logger.error('Failed to create Luna job', exc_info=True)
                 self.failed.set()
-            except HTTPError:
-                self._interrupted.set()
-                logger.error("Luna service unavailable", exc_info=True)
-            else:
-                return self._job_number
-        else:
-            return self._job_number
+                self.interrupt()
+        return self._job_number
 
     def put(self, data_type, df):
         if not self.failed.is_set():
@@ -101,6 +105,7 @@ class LunaClient(AbstractClient):
         else:
             logger.debug('Skipped incoming data chunk due to failures')
 
+    @if_not_failed
     def create_job(self):
         """ Create public Luna job
 
@@ -145,6 +150,7 @@ class LunaClient(AbstractClient):
             logger.info('Luna job created: %s', job_id)
             return job_id
 
+    @if_not_failed
     def update_job(self, meta):
         req = requests.Request(
             'POST',
@@ -161,6 +167,7 @@ class LunaClient(AbstractClient):
         logger.debug('Update job status: %s', response.status_code)
         logger.debug('Answ data: %s', response.content)
 
+    @if_not_failed
     def update_metric(self, meta):
         for metric_tag, metric_obj in self.job.manager.metrics.items():
             if not metric_obj.tag:
@@ -186,6 +193,7 @@ class LunaClient(AbstractClient):
             logger.debug('Update metric status: %s', response.status_code)
             logger.debug('Answ data: %s', response.content)
 
+    @if_not_failed
     def _close_job(self):
         req = requests.Request(
             'GET',
@@ -319,8 +327,7 @@ class WorkerThread(QueueWorker):
 
     def _process_pending_queue(self, progress=False):
         self.data['max_length'] = 0
-        empty_queue_count = 0
-        while self.data['max_length'] < MAX_DF_LENGTH and empty_queue_count < MAX_DF_WAIT:
+        while self.data['max_length'] < MAX_DF_LENGTH and not self._stopped.is_set():
             try:
                 data_type, raw_df = self.queue.get_nowait()
                 if progress:
