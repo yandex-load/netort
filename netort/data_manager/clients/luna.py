@@ -281,8 +281,8 @@ class RegisterWorkerThread(QueueWorker):
                 return
             metric.tag = self._register_metric(metric)
             logger.debug(
-                'Successfully received tag %s for metric.local_id: %s',
-                metric.tag, metric.local_id)
+                'Successfully received tag %s for metric.local_id: %s (%s)',
+                metric.tag, metric.local_id, metric.meta)
             self.client.public_ids[metric.local_id] = metric.tag
         except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
             logger.error("Luna service unavailable", exc_info=True)
@@ -326,35 +326,41 @@ class WorkerThread(QueueWorker):
 
     def _process_pending_queue(self, progress=False):
         self.data['max_length'] = 0
-        while self.data['max_length'] < MAX_DF_LENGTH and not self._stopped.is_set():
+        while self.data['max_length'] < MAX_DF_LENGTH and not self._interrupted.is_set():
             try:
                 data_type, raw_df = self.queue.get_nowait()
                 if progress:
                     logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
             except queue.Empty:
+                if self._stopped.is_set():
+                    break
                 time.sleep(SLEEP_ON_EMPTY)
             else:
                 df = self.__update_df(data_type, raw_df)
                 if df.empty:
+                    logger.debug('Df is empty')
                     continue
                 if not self.data.get(data_type):
-                    self.data[data_type.table_name] = [df[data_type.columns]]
-                    self.data['max_length'] = self.__update_max_length(df.shape[0])
+                    self.data[data_type.table_name] = {}
+                    self.data[data_type.table_name]['dataframe'] = [df]
+                    self.data[data_type.table_name]['columns'] = self.client.luna_columns + data_type.columns
                 else:
-                    self.data[data_type.table_name].append(df[data_type.columns])
-                    self.data['max_length'] = self.__update_max_length(df.shape[0])
+                    self.data[data_type.table_name]['data'].append(df)
+                self.data['max_length'] = self.__update_max_length(df.shape[0])
 
         for table_name, data in self.data.items():
             if table_name is not 'max_length':
-                result_df = pd.concat(data)
+                result_df = pd.concat(data['dataframe'])
                 try:
-                    self.__upload_data(table_name, result_df)
+                    self.__upload_data(table_name, result_df, data['columns'])
                 except ConnectionError:
                     logger.warning('Failed to upload data to luna backend after consecutive retries. '
                                    'Attempt to send data in two halves')
                     try:
-                        self.__upload_data(table_name, result_df.head(len(result_df)//2))
-                        self.__upload_data(table_name, result_df.tail(len(result_df) - len(result_df)//2))
+                        self.__upload_data(table_name, result_df.head(len(result_df)//2), data['columns'])
+                        self.__upload_data(
+                            table_name, result_df.tail(len(result_df) - len(result_df)//2), data['columns']
+                        )
                     except ConnectionError:
                         logger.warning('Failed to upload data to luna backend after consecutive retries. Sorry.')
         self.data = {}
@@ -383,15 +389,14 @@ class WorkerThread(QueueWorker):
             # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
             return df_grouped_by_id
 
-    def __upload_data(self, table_name, df):
+    def __upload_data(self, table_name, df, columns):
         body = df.to_csv(
             sep='\t',
             header=False,
             index=False,
             na_rep='',
-            columns=self.client.luna_columns + df.columns.values.tolist()
+            columns=columns
         )
-        logger.debug('Body:\n{}'.format(body))
         req = requests.Request(
             'POST', "{api}{data_upload_handler}{query}".format(
                 api=self.client.api_address,  # production proxy
@@ -407,6 +412,8 @@ class WorkerThread(QueueWorker):
         }
         req.data = body
         prepared_req = req.prepare()
+        logger.debug('Body content length: %s, df size: %s; content head\n%s',
+                     prepared_req.headers['Content-Length'], df.shape, df.head())
         # logger.debug('Prepared request: %s' % '{}\n{}\n{}\n\n{}'.format(
         #     '-----------START-----------',
         #     prepared_req.method + ' ' + prepared_req.url,
@@ -420,6 +427,7 @@ class WorkerThread(QueueWorker):
         except ConnectionError:
             raise
         except (HTTPError, Timeout, TooManyRedirects) as e:
+            # noinspection PyUnboundLocalVariable
             logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
                            format(resp.content if isinstance(e, HTTPError) else 'no response'))
             logger.debug(
