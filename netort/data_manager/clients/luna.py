@@ -1,16 +1,18 @@
 from requests import HTTPError, ConnectionError
+from requests.exceptions import Timeout, TooManyRedirects
 
 from ..common.interfaces import AbstractClient, QueueWorker
 from ..common.util import pretty_print
 
-from retrying import retry, RetryError
+from retrying import retry
 
 import pkg_resources
 import logging
 import requests
 import threading
 import time
-import queue
+import six
+import pandas as pd
 import datetime
 import os
 import six
@@ -25,11 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 RETRY_ARGS = dict(
-    wrap_exception=True,
     stop_max_delay=30000,
     wait_fixed=3000,
     stop_max_attempt_number=10
 )
+
+SLEEP_ON_EMPTY = 0.2  # pause in seconds before checking empty queue on new items
+MAX_DF_LENGTH = 20000  # Size of chunk is 20k rows, it's approximately 1Mb in csv
 
 
 @retry(**RETRY_ARGS)
@@ -88,7 +92,7 @@ class LunaClient(AbstractClient):
             try:
                 self._job_number = self.create_job()
                 self.__test_id_link_to_jobno()
-            except (RetryError, HTTPError):
+            except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
                 logger.error('Failed to create Luna job', exc_info=True)
                 self.failed.set()
                 self.interrupt()
@@ -280,7 +284,7 @@ class RegisterWorkerThread(QueueWorker):
                 'Successfully received tag %s for metric.local_id: %s',
                 metric.tag, metric.local_id)
             self.client.public_ids[metric.local_id] = metric.tag
-        except (RetryError, HTTPError, ConnectionError):
+        except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
             logger.error("Luna service unavailable", exc_info=True)
             self.client.interrupt()
         except queue.Empty:
@@ -362,7 +366,7 @@ class WorkerThread(QueueWorker):
                     try:
                         resp = send_chunk(self.session, prepared_req)
                         resp.raise_for_status()
-                    except (RetryError, HTTPError, ConnectionError) as e:
+                    except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
                         logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
                                        format(resp.content if isinstance(e, HTTPError) else 'no response'))
                         logger.debug(
