@@ -281,8 +281,8 @@ class RegisterWorkerThread(QueueWorker):
                 return
             metric.tag = self._register_metric(metric)
             logger.debug(
-                'Successfully received tag %s for metric.local_id: %s',
-                metric.tag, metric.local_id)
+                'Successfully received tag %s for metric.local_id: %s (%s)',
+                metric.tag, metric.local_id, metric.meta)
             self.client.public_ids[metric.local_id] = metric.tag
         except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
             logger.error("Luna service unavailable", exc_info=True)
@@ -341,41 +341,87 @@ class WorkerThread(QueueWorker):
                     df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
                     df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
                     # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
-                    body = df_grouped_by_id.to_csv(
-                        sep='\t',
-                        header=False,
-                        index=False,
-                        na_rep='',
-                        columns=self.client.luna_columns + data_type.columns
-                    )
-                    req = requests.Request(
-                        'POST', "{api}{data_upload_handler}{query}".format(
-                            api=self.client.api_address, # production proxy
-                            data_upload_handler=self.client.upload_metric_path,
-                            query="INSERT INTO {table}_buffer FORMAT TSV".format(
-                                table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
-                            )
-                        )
-                    )
-                    req.headers = {
-                        'X-ClickHouse-User': 'lunapark',
-                        'X-ClickHouse-Key': 'lunapark'
-                    }
-                    req.data = body
-                    prepared_req = req.prepare()
-                    try:
-                        resp = send_chunk(self.session, prepared_req)
-                        resp.raise_for_status()
-                    except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
-                        logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
-                                       format(resp.content if isinstance(e, HTTPError) else 'no response'))
-                        logger.debug(
-                            'Failed to upload data to luna backend after consecutive retries.\n'
-                            'Dropped data head: \n%s', df_grouped_by_id.head(), exc_info=True
-                        )
-                        self.client.interrupt()
+
+                    self.__upload_data(data_type, df_grouped_by_id)
+
+                    # body = df_grouped_by_id.to_csv(
+                    #     sep='\t',
+                    #     header=False,
+                    #     index=False,
+                    #     na_rep='',
+                    #     columns=self.client.luna_columns + data_type.columns
+                    # )
+                    # req = requests.Request(
+                    #     'POST', "{api}{data_upload_handler}{query}".format(
+                    #         api=self.client.api_address, # production proxy
+                    #         data_upload_handler=self.client.upload_metric_path,
+                    #         query="INSERT INTO {table}_buffer FORMAT TSV".format(
+                    #             table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name) # production
+                    #         )
+                    #     )
+                    # )
+                    # req.headers = {
+                    #     'X-ClickHouse-User': 'lunapark',
+                    #     'X-ClickHouse-Key': 'lunapark'
+                    # }
+                    # req.data = body
+                    # prepared_req = req.prepare()
+                    # try:
+                    #     resp = send_chunk(self.session, prepared_req)
+                    #     resp.raise_for_status()
+                    # except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
+                    #     logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
+                    #                    format(resp.content if isinstance(e, HTTPError) else 'no response'))
+                    #     logger.debug(
+                    #         'Failed to upload data to luna backend after consecutive retries.\n'
+                    #         'Dropped data head: \n%s', df_grouped_by_id.head(), exc_info=True
+                    #     )
+                    #     self.client.interrupt()
                 else:
                     # no public_id yet, put it back
                     self.client.put(data_type, df)
                     logger.debug('No public id for metric {}'.format(metric.local_id))
                     self.client.register_worker.register(metric)
+
+    def __upload_data(self, data_type, df):
+        body = df.to_csv(
+            sep='\t',
+            header=False,
+            index=False,
+            na_rep='',
+            columns=self.client.luna_columns + data_type.columns
+        )
+        req = requests.Request(
+            'POST', "{api}{data_upload_handler}{query}".format(
+                api=self.client.api_address,  # production proxy
+                data_upload_handler=self.client.upload_metric_path,
+                query="INSERT INTO {table} FORMAT TSV".format(
+                    table="{db}.{type}".format(db=self.client.dbname, type=data_type.table_name)  # production
+                )
+            )
+        )
+        req.headers = {
+            'X-ClickHouse-User': 'lunapark',
+            'X-ClickHouse-Key': 'lunapark'
+        }
+        req.data = body
+        prepared_req = req.prepare()
+        # logger.debug('Body content length: %s, df size: %s; content is\n%s',
+        #              prepared_req.headers['Content-Length'], df.shape, df)
+
+        try:
+            resp = send_chunk(self.session, prepared_req)
+            resp.raise_for_status()
+        except ConnectionError:
+            raise
+        except (HTTPError, Timeout, TooManyRedirects) as e:
+            # noinspection PyUnboundLocalVariable
+            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.
+                           format(resp.content if isinstance(e, HTTPError) else 'no response'))
+            logger.debug(
+                'Failed to upload data to luna backend after consecutive retries.\n'
+                'Dropped data head: \n%s', df.head(), exc_info=True
+            )
+            self.client.interrupt()
+
+            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.format(resp.content))
