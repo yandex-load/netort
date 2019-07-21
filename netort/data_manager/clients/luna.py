@@ -325,6 +325,7 @@ class WorkerThread(QueueWorker):
         self.session = requests.session()
 
     def _process_pending_queue(self, progress=False):
+        self.data['max_length'] = 0
         while not self._stopped.is_set():
             try:
                 data_type, raw_df = self.queue.get_nowait()
@@ -333,7 +334,7 @@ class WorkerThread(QueueWorker):
             except queue.Empty:
                 if self._stopped.is_set():
                     break
-                time.sleep(0.2)
+                time.sleep(SLEEP_ON_EMPTY)
             else:
                 df = self.__update_df(data_type, raw_df)
                 if df.empty:
@@ -345,13 +346,23 @@ class WorkerThread(QueueWorker):
                         self.data[data_type.table_name]['columns'] = self.client.luna_columns + data_type.columns
                     else:
                         self.data[data_type.table_name]['data'].append(df)
+                    self.data['max_length'] = self.__update_max_length(df.shape[0])
 
-            logger.info('Result df tables:')
-            for table, data in self.data.items():
-                logger.info('Table %s, dfs %s', table, table['dataframe'])
-                result_df = pd.concat(data['dataframe'])
-                logger.info('Df length after concat: %s', result_df.shape[0])
-                self.__upload_data(result_df, table, data['columns'])
+            for table_name, data in self.data.items():
+                if table_name is not 'max_length':
+                    result_df = pd.concat(data['dataframe'])
+                    try:
+                        self.__upload_data(result_df, table_name, data['columns'])
+                    except ConnectionError:
+                        logger.warning('Failed to upload data to luna backend after consecutive retries. '
+                                       'Attempt to send data in two halves')
+                        try:
+                            self.__upload_data(result_df.head(len(result_df)//2), data['columns'], table_name, data['columns'])
+                            self.__upload_data(
+                                result_df.tail(len(result_df) - len(result_df)//2), table_name, data['columns']
+                            )
+                        except ConnectionError:
+                            logger.warning('Failed to upload data to luna backend after consecutive retries. Sorry.')
 
     def old_process_pending_queue(self, progress=False):
         try:
