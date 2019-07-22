@@ -337,6 +337,7 @@ class WorkerThread(QueueWorker):
         self._finished.set()
 
     def _process_pending_queue(self, progress=False):
+
         try:
             data_type, raw_df = self.queue.get_nowait()
             if progress:
@@ -390,6 +391,7 @@ class WorkerThread(QueueWorker):
                 logger.debug('Length of data for %s is %s', table_name, len(data['dataframe']))
                 try:
                     self.__send_upload(table_name, data['dataframe'], data['columns'])
+
                 except ConnectionError:
                     logger.warning('Failed to upload data to luna backend after consecutive retries. '
                                    'Attempt to send data in two halves')
@@ -441,6 +443,7 @@ class WorkerThread(QueueWorker):
             resp = send_chunk(self.session, prepared_req)
             resp.raise_for_status()
             logger.info('Update table %s with %s rows -- successful', table_name, df.shape[0])
+
         except ConnectionError:
             raise
         except (HTTPError, Timeout, TooManyRedirects) as e:
