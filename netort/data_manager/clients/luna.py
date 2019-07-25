@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 RETRY_ARGS = dict(
+    wrap_exception=True,
     stop_max_delay=30000,
     wait_fixed=3000,
     stop_max_attempt_number=10
@@ -326,72 +327,6 @@ class WorkerThread(QueueWorker):
 
     def _process_pending_queue(self, progress=False):
         self.data['max_length'] = 0
-        while not self._stopped.is_set():
-            try:
-                data_type, raw_df = self.queue.get_nowait()
-                if progress:
-                    logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
-            except queue.Empty:
-                if self._stopped.is_set():
-                    break
-                time.sleep(SLEEP_ON_EMPTY)
-            else:
-                df = self.__update_df(data_type, raw_df)
-                if df.empty:
-                    pass
-                else:
-                    if not self.data.get(data_type):
-                        self.data[data_type.table_name] = {}
-                        self.data[data_type.table_name]['dataframe'] = [df]
-                        self.data[data_type.table_name]['columns'] = self.client.luna_columns + data_type.columns
-                    else:
-                        self.data[data_type.table_name]['data'].append(df)
-                    self.data['max_length'] = self.__update_max_length(df.shape[0])
-
-            for table_name, data in self.data.items():
-                if table_name is not 'max_length':
-                    result_df = pd.concat(data['dataframe'])
-                    try:
-                        self.__upload_data(result_df, table_name, data['columns'])
-                    except ConnectionError:
-                        logger.warning('Failed to upload data to luna backend after consecutive retries. '
-                                       'Attempt to send data in two halves')
-                        try:
-                            self.__upload_data(result_df.head(len(result_df)//2), data['columns'], table_name, data['columns'])
-                            self.__upload_data(
-                                result_df.tail(len(result_df) - len(result_df)//2), table_name, data['columns']
-                            )
-                        except ConnectionError:
-                            logger.warning('Failed to upload data to luna backend after consecutive retries. Sorry.')
-
-    def old_process_pending_queue(self, progress=False):
-        try:
-            data_type, df = self.queue.get_nowait()
-            if progress:
-                logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
-        except queue.Empty:
-            time.sleep(0.2)
-        else:
-            for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
-                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
-                if not metric:
-                    logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
-                    return
-                if metric.local_id in self.client.public_ids:
-                    df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
-                    df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
-                    # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
-
-                    self.__upload_data(data_type, df_grouped_by_id)
-
-                else:
-                    # no public_id yet, put it back
-                    self.client.put(data_type, df)
-                    logger.debug('No public id for metric {}'.format(metric.local_id))
-                    self.client.register_worker.register(metric)
-
-    def new_process_pending_queue(self, progress=False):
-        self.data['max_length'] = 0
         while self.data['max_length'] < MAX_DF_LENGTH and not self._interrupted.is_set():
             try:
                 data_type, raw_df = self.queue.get_nowait()
@@ -454,7 +389,7 @@ class WorkerThread(QueueWorker):
             # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
             return df_grouped_by_id
 
-    def __upload_data(self, df, table_name, columns):
+    def __upload_data(self, table_name, df, columns):
         body = df.to_csv(
             sep='\t',
             header=False,
