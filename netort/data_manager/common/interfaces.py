@@ -48,12 +48,12 @@ class TypeEvents(DataType):
 class TypeQuantiles(Aggregated, DataType):
     perc_list = [0, 10, 25, 50, 75, 80, 85, 90, 95, 98, 99, 100]
     qlist = ['q%d' % n for n in perc_list]
-    rename = {'mean': 'average', 'std': 'stddev', '0%': 'q0', '10%': 'q10', '25%': 'q25',
+    rename = {'count': 'cnt', 'mean': 'average', 'std': 'stddev', '0%': 'q0', '10%': 'q10', '25%': 'q25',
               '50%': 'q50', '75%': 'q75', '80%': 'q80', '85%': 'q85', '90%': 'q90',
               '95%': 'q95', '98%': 'q98', '99%': 'q99', '100%': 'q100', }
 
     table_name = 'aggregates'
-    columns = ['ts'] + qlist + ['average', 'stddev']
+    columns = ['ts'] + qlist + ['average', 'stddev', 'sum', 'cnt']
     __aggregator_buffer = {}
     aggregator_buffer_size = 10
 
@@ -67,6 +67,8 @@ class TypeQuantiles(Aggregated, DataType):
             describe(percentiles=[i / 100. for i in cls.perc_list]). \
             rename(columns=cls.rename)
         res['ts'] = res.index
+        res['cnt'] = res['cnt'].astype(int)
+        res['sum'] = res['average'] * res['cnt']
         return res
 
 
