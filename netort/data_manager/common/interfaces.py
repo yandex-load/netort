@@ -9,6 +9,9 @@ import numpy as np
 import logging
 
 
+logger = logging.getLogger(__name__)
+
+
 class Aggregated(object):
     buffer_size = 10  # seconds
 
@@ -62,6 +65,9 @@ class TypeQuantiles(Aggregated, DataType):
     def processor(cls, df, last_piece, groupby='second'):
         # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
         #                                 , orient='index', columns=Aggregate.columns)
+        if df.empty:
+            logging.debug('Empty df for quantiles, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         res = series.groupby(series.index). \
@@ -89,6 +95,9 @@ class TypeDistribution(Aggregated, DataType):
 
     @classmethod
     def processor(cls, df, last_piece, bins=DEFAULT_BINS, groupby='second'):
+        if df.empty:
+            logger.debug('Empty df for distribution, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         data = {ts: np.histogram(s, bins=bins) for ts, s in series.groupby(series.index)}
@@ -110,6 +119,9 @@ class TypeHistogram(Aggregated, DataType):
 
     @classmethod
     def processor(cls, df, last_piece, groupby='second'):
+        if df.empty:
+            logger.debug('Empty df for histogram, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         data = series.groupby([series.index, series.values]).size().reset_index().\
