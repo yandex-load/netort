@@ -137,7 +137,7 @@ class DataSession(object):
             try:
                 client.close()
             except Exception:
-                logger.warning('Client %s failed to close', client)
+                logger.warning('Client %s failed to close', client, exc_info=True)
             else:
                 logger.debug('Client closed: %s', client)
         logger.info('DataSession finished!')
