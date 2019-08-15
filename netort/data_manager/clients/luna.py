@@ -19,6 +19,7 @@ import six
 if six.PY2:
     import queue
 else:
+    # noinspection PyUnresolvedReferences
     import Queue as queue
 
 requests.packages.urllib3.disable_warnings()
@@ -95,6 +96,7 @@ class LunaClient(AbstractClient):
             except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
                 logger.error('Failed to create Luna job', exc_info=True)
                 self.failed.set()
+                self.worker.failed.set()
                 self.interrupt()
         return self._job_number
 
@@ -144,6 +146,7 @@ class LunaClient(AbstractClient):
         job_id = response.content.decode('utf-8') if isinstance(response.content, bytes) else response.content
         if not job_id:
             self.failed.set()
+            self.worker.failed.set()
             raise ValueError('Luna returned answer without jobid: %s', response.content)
         else:
             logger.info('Luna job created: %s', job_id)
@@ -238,6 +241,9 @@ class LunaClient(AbstractClient):
         logger.info('Joining luna client metric registration thread...')
         self.register_worker.join()
         self.worker.stop()
+        if not self.job_number:
+            logger.info('Try to interrupt queue')
+            self.worker.interrupt()
         if not self.worker.is_finished():
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
@@ -323,6 +329,7 @@ class WorkerThread(QueueWorker):
         super(WorkerThread, self).__init__(client.pending_queue)
         self.data = {'max_length': 0}
         self.client = client
+        self.failed = threading.Event()
         self.session = requests.session()
 
     def run(self):
@@ -337,13 +344,14 @@ class WorkerThread(QueueWorker):
         self._finished.set()
 
     def _process_pending_queue(self, progress=False):
-
         try:
             data_type, raw_df = self.queue.get_nowait()
             if progress:
                 logger.info("{} entries in queue remaining".format(self.client.pending_queue.qsize()))
         except queue.Empty:
             time.sleep(SLEEP_ON_EMPTY)
+        except KeyboardInterrupt:
+            self.interrupt()
         else:
             self.__update_df(data_type, raw_df)
 
@@ -385,6 +393,7 @@ class WorkerThread(QueueWorker):
         if self.data['max_length'] >= MAX_DF_LENGTH:
             self.__upload_data()
 
+    @if_not_failed
     def __upload_data(self):
         for table_name, data in self.data.items():
             if table_name is not 'max_length':
