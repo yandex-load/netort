@@ -2,13 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name='netort',
-    version='0.6.5',
+    version='0.6.6',
     description='common library for yandex-load org',
     longer_description='''
 common library for yandex-load org
 ''',
-    maintainer='Timur Torubarov (load testing)',
-    maintainer_email='netort@yandex-team.ru',
+    author='Timur Torubarov (load testing)',
+    author_email='netort@yandex-team.ru',
+    maintainer='Yandex load team',
+    maintainer_email='load@yandex-team.ru',
     url='http://github.com/yandex-load/netort',
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
