@@ -16,7 +16,7 @@ import pandas as pd
 import datetime
 import os
 import six
-if six.PY2:
+if six.PY3:
     import queue
 else:
     # noinspection PyUnresolvedReferences
@@ -247,6 +247,7 @@ class LunaClient(AbstractClient):
         if not self.worker.is_finished():
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
+        self.worker._free.wait()
         self.worker.join()
         self._close_job()
         # FIXME hardcoded host
@@ -447,6 +448,7 @@ class WorkerThread(QueueWorker):
         #              prepared_req.headers['Content-Length'], df.shape, df)
 
         try:
+            self._free.clear()
             resp = send_chunk(self.session, prepared_req)
             resp.raise_for_status()
             logger.info('Update table %s with %s rows -- successful', table_name, df.shape[0])
@@ -464,3 +466,5 @@ class WorkerThread(QueueWorker):
             self.client.interrupt()
 
             logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.format(resp.content))
+        finally:
+            self._free.set()

@@ -232,6 +232,7 @@ class QueueWorker(threading.Thread):
         self._finished = threading.Event()
         self._stopped = threading.Event()
         self._interrupted = threading.Event()
+        self._free = threading.Event()
 
     def stop(self):
         self._stopped.set()
