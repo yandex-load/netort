@@ -151,7 +151,7 @@ class AbstractClient(object):
 
 
 class MetricData(object):
-    def __init__(self, df, data_types, local_id):
+    def __init__(self, df, data_types, local_id, test_start):
         """
 
         :param df: pandas.DataFrame
@@ -162,6 +162,7 @@ class MetricData(object):
         df = df.set_index('metric_local_id')
         self.data_types = data_types
         self.local_id = local_id
+        df['ts'] = df['ts'] - test_start
         if self.is_aggregated:
             df['second'] = (df['ts'] / 1000000).astype(int)
         self.df = df
@@ -182,10 +183,11 @@ class AbstractMetric(object):
     VALUE_COL = 'value'
     TS_COL = 'ts'
 
-    def __init__(self, meta, queue_, raw=True, aggregate=False):
+    def __init__(self, meta, queue_, test_start, raw=True, aggregate=False):
         self.local_id = str(uuid.uuid4())
         self.meta = meta
         self.routing_queue = queue_
+        self.test_start = test_start
         self.raw = raw
         self.aggregate = aggregate
         if not (raw or aggregate):
@@ -214,10 +216,7 @@ class AbstractMetric(object):
 
     def put(self, df):
         # FIXME check dtypes of an incoming dataframe
-        # df['type'] = self.type
-        # df['metric_local_id'] = self.local_id
-        # df = df.set_index('metric_local_id')
-        data = MetricData(df, self.data_types, self.local_id)
+        data = MetricData(df, self.data_types, self.local_id, self.test_start)
         self.routing_queue.put(data)
 
 

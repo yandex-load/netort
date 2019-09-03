@@ -75,10 +75,10 @@ class DataSession(object):
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
     def new_true_metric(self, name, raw=True, aggregate=False, **kw):
-        return self.manager.new_true_metric(name, raw, aggregate, **kw)
+        return self.manager.new_true_metric(name, self.test_start, raw, aggregate, **kw)
 
     def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        return self.manager.new_event_metric(name, raw, aggregate, **kw)
+        return self.manager.new_event_metric(name, self.test_start, raw, aggregate, **kw)
 
     def subscribe(self, callback, filter_):
         return self.manager.subscribe(callback, filter_)
@@ -179,7 +179,7 @@ class DataManager(object):
         self.router = MetricsRouter(self)
         self.router.start()
 
-    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
+    def new_true_metric(self, name, test_start, raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -187,14 +187,13 @@ class DataManager(object):
         Return:
             metric (available_metrics[0]): one of Metric
         """
-        return self._new_metric(Metric, raw, aggregate, name=name, **kw)
+        return self._new_metric(Metric, test_start, raw, aggregate, name=name, **kw)
 
-    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        return self._new_metric(Event, raw, aggregate, name=name, **kw)
+    def new_event_metric(self, name, test_start, raw=True, aggregate=False, **kw):
+        return self._new_metric(Event, test_start, raw, aggregate, name=name, **kw)
 
-    def _new_metric(self, dtype, raw=True, aggregate=False, **kw):
-
-        metric_obj = dtype(kw, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+    def _new_metric(self, dtype, test_start, raw=True, aggregate=False, **kw):
+        metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: kw}).T  # create metric meta
         self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
