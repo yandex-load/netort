@@ -86,10 +86,7 @@ class LunaClient(AbstractClient):
 
     @property
     def job_number(self):
-        if self.failed.is_set():
-            return
-        # FIXME: job_number should be a property
-        if not self._job_number:
+        if not self._job_number and not self.failed.is_set():
             try:
                 self._job_number = self.create_job()
                 self.__test_id_link_to_jobno()
@@ -131,11 +128,9 @@ class LunaClient(AbstractClient):
                 api_address=self.api_address,
                 path=self.create_job_path
             ),
-            headers=headers
+            headers=headers,
+            data={'test_start': int(self.job.test_start)}
         )
-        req.data = {
-            'test_start': self.job.test_start
-        }
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
 
@@ -196,14 +191,15 @@ class LunaClient(AbstractClient):
             logger.debug('Answ data: %s', response.content)
 
     @if_not_failed
-    def _close_job(self):
+    def _close_job(self, duration):
         req = requests.Request(
             'GET',
             "{api_address}{path}".format(
                 api_address=self.api_address,
                 path=self.close_job_path,
             ),
-            params={'job': self._job_number}
+            params={'job': self._job_number,
+                    'duration': int(duration)}
         )
         prepared_req = req.prepare()
         logger.debug('Prepared close_job request:\n%s', pretty_print(prepared_req))
@@ -236,10 +232,8 @@ class LunaClient(AbstractClient):
                 self.symlink_artifacts_path, self.job_number, self.job.job_id
             )
 
-    def close(self):
-        self.register_worker.stop()
+    def close(self, test_end):
         logger.info('Joining luna client metric registration thread...')
-        self.register_worker.join()
         self.worker.stop()
         if not self.job_number:
             logger.info('Try to interrupt queue')
@@ -248,7 +242,9 @@ class LunaClient(AbstractClient):
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
-        self._close_job()
+        self.register_worker.stop()
+        self.register_worker.join()
+        self._close_job(duration=test_end-self.job.test_start)
         # FIXME hardcoded host
         # FIXME we dont know front hostname, because api address now is clickhouse address
         logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
@@ -374,8 +370,6 @@ class WorkerThread(QueueWorker):
 
             df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
             df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
-            # logger.debug('Groupped by id:\n{}'.format(df_grouped_by_id.head()))
-            # logger.debug('Metric: {} columns: {}'.format(metric, metric.columns))
             result_df = df_grouped_by_id
 
             if not result_df.empty:
@@ -462,5 +456,3 @@ class WorkerThread(QueueWorker):
                 'Dropped data head: \n%s', df.head(), exc_info=True
             )
             self.client.interrupt()
-
-            logger.warning('Failed to upload data to luna. Dropped some data.\n{}'.format(resp.content))

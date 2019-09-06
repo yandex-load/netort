@@ -162,7 +162,7 @@ class MetricData(object):
         df = df.set_index('metric_local_id')
         self.data_types = data_types
         self.local_id = local_id
-        df['ts'] = df['ts'] - test_start
+        df['ts'] = (df['ts'] - test_start).astype(int)
         if self.is_aggregated:
             df['second'] = (df['ts'] / 1000000).astype(int)
         self.df = df

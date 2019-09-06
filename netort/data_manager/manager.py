@@ -44,12 +44,12 @@ class DataSession(object):
         * chunkify data for upload inside the uploader code
         * fight performance issues (probably caused by poor pandas write_csv performance)
     """
-    def __init__(self,  config):
+    def __init__(self,  config, test_start=None):
         self.config = config
         self.operator = self.__get_operator()
         self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))
         logger.info('Created new local data session: %s', self.job_id)
-        self.test_start = config.get('test_start', int(time.time() * 10**6))
+        self.test_start = test_start if test_start else int(time.time() * 10**6)
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
         self._artifacts_dir = None
         self.manager = DataManager()
@@ -126,7 +126,7 @@ class DataSession(object):
                 "file.")
             raise
 
-    def close(self):
+    def close(self, test_end):
         logger.info('DataSession received close signal.')
         logger.info('Closing DataManager')
         self.manager.close()
@@ -135,7 +135,7 @@ class DataSession(object):
         logger.info('Sending close to DataSession clients...')
         for client in self.clients:
             try:
-                client.close()
+                client.close(test_end)
             except Exception:
                 logger.warning('Client %s failed to close', client, exc_info=True)
             else:

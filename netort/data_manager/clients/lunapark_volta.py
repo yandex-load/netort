@@ -213,7 +213,7 @@ class LunaparkVoltaClient(AbstractClient):
         """ mock """
         pass
 
-    def close(self):
+    def close(self, test_end):
         self.worker.stop()
         while not self.worker.is_finished():
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
