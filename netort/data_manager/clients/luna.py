@@ -156,8 +156,8 @@ class LunaClient(AbstractClient):
                 path=self.update_job_path,
                 job=self.job_number
             ),
+            json=meta
         )
-        req.data = meta
         prepared_req = req.prepare()
         logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
         response = send_chunk(self.session, prepared_req)
