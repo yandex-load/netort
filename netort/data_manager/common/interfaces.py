@@ -3,7 +3,10 @@ import threading
 from collections import Counter
 
 import pandas as pd
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 import uuid
 import numpy as np
 import logging
@@ -106,9 +109,9 @@ class TypeDistribution(Aggregated, DataType):
             [pd.DataFrame.from_dict(
                 {'l': bins[:-1],
                  'r': bins[1:],
-                 'cnt': data,
+                 'cnt': cnt,
                  'ts': ts}
-            ).query('cnt > 0') for ts, (data, bins) in data.items()]
+            ).query('cnt > 0') for ts, (cnt, bins) in data.items()]
         )
         return result
 

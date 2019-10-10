@@ -1,5 +1,8 @@
 import logging
-import queue as q
+try:
+    import queue as q
+except ImportError:
+    import Queue as q
 import threading
 import time
 

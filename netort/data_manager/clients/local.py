@@ -5,7 +5,10 @@ import os
 import logging
 import json
 import threading
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 import time
 from builtins import str
 
@@ -124,7 +127,7 @@ class ProcessingThread(threading.Thread):
                     }
                     self.client.registered_meta[metric_full_name] = this_metric_meta
                     artifact_file_header = json.dumps(this_metric_meta)
-                    self.file_streams[metric_full_name].write(u"%s\n" % artifact_file_header)
+                    self.file_streams[metric_full_name].write("%s\n" % artifact_file_header)
                 csv_data = df_grouped_by_id.to_csv(
                     sep=self.client.separator,
                     header=False,
