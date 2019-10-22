@@ -44,12 +44,12 @@ class DataSession(object):
         * chunkify data for upload inside the uploader code
         * fight performance issues (probably caused by poor pandas write_csv performance)
     """
-    def __init__(self,  config):
+    def __init__(self,  config, test_start=None):
         self.config = config
         self.operator = self.__get_operator()
         self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))
         logger.info('Created new local data session: %s', self.job_id)
-        self.test_start = config.get('test_start', int(time.time() * 10**6))
+        self.test_start = test_start if test_start else int(time.time() * 10**6)
         self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')
         self._artifacts_dir = None
         self.manager = DataManager()
@@ -75,10 +75,10 @@ class DataSession(object):
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
     def new_true_metric(self, name, raw=True, aggregate=False, **kw):
-        return self.manager.new_true_metric(name, raw, aggregate, **kw)
+        return self.manager.new_true_metric(name, self.test_start, raw, aggregate, **kw)
 
     def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        return self.manager.new_event_metric(name, raw, aggregate, **kw)
+        return self.manager.new_event_metric(name, self.test_start, raw, aggregate, **kw)
 
     def subscribe(self, callback, filter_):
         return self.manager.subscribe(callback, filter_)
@@ -126,7 +126,7 @@ class DataSession(object):
                 "file.")
             raise
 
-    def close(self):
+    def close(self, test_end):
         logger.info('DataSession received close signal.')
         logger.info('Closing DataManager')
         self.manager.close()
@@ -135,9 +135,9 @@ class DataSession(object):
         logger.info('Sending close to DataSession clients...')
         for client in self.clients:
             try:
-                client.close()
+                client.close(test_end)
             except Exception:
-                logger.warning('Client %s failed to close', client)
+                logger.warning('Client %s failed to close', client, exc_info=True)
             else:
                 logger.debug('Client closed: %s', client)
         logger.info('DataSession finished!')
@@ -179,7 +179,7 @@ class DataManager(object):
         self.router = MetricsRouter(self)
         self.router.start()
 
-    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
+    def new_true_metric(self, name, test_start, raw=True, aggregate=False, **kw):
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -187,14 +187,13 @@ class DataManager(object):
         Return:
             metric (available_metrics[0]): one of Metric
         """
-        return self._new_metric(Metric, raw, aggregate, name=name, **kw)
+        return self._new_metric(Metric, test_start, raw, aggregate, name=name, **kw)
 
-    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        return self._new_metric(Event, raw, aggregate, name=name, **kw)
+    def new_event_metric(self, name, test_start, raw=True, aggregate=False, **kw):
+        return self._new_metric(Event, test_start, raw, aggregate, name=name, **kw)
 
-    def _new_metric(self, dtype, raw=True, aggregate=False, **kw):
-
-        metric_obj = dtype(kw, self.routing_queue, raw=raw, aggregate=aggregate)  # create metric object
+    def _new_metric(self, dtype, test_start, raw=True, aggregate=False, **kw):
+        metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate)  # create metric object
         metric_meta = pd.DataFrame({metric_obj.local_id: kw}).T  # create metric meta
         self.metrics_meta.append(metric_meta)  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object

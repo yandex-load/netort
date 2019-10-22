@@ -65,7 +65,7 @@ class LocalStorageClient(AbstractClient):
         if df is not None:
             self.pending_queue.put((data_type, df))
 
-    def close(self):
+    def close(self, test_end):
         self.processing_thread.stop()
         logger.info('Joining local client processing thread...')
         self.processing_thread.join()

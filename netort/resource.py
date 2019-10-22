@@ -7,6 +7,7 @@ import hashlib
 import serial
 import yaml
 import socket
+import six
 from six.moves.urllib.parse import urlparse
 from contextlib import closing
 
@@ -248,7 +249,7 @@ class HttpOpener(object):
 
     def tmpfile_path(self):
         hasher = hashlib.md5()
-        hasher.update(self.hash)
+        hasher.update(six.ensure_binary(self.hash))
         return "/tmp/http_%s.downloaded_resource" % hasher.hexdigest()
 
     @retry

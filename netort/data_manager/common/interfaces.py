@@ -6,6 +6,10 @@ import pandas as pd
 import queue
 import uuid
 import numpy as np
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class Aggregated(object):
@@ -48,12 +52,12 @@ class TypeEvents(DataType):
 class TypeQuantiles(Aggregated, DataType):
     perc_list = [0, 10, 25, 50, 75, 80, 85, 90, 95, 98, 99, 100]
     qlist = ['q%d' % n for n in perc_list]
-    rename = {'mean': 'average', 'std': 'stddev', '0%': 'q0', '10%': 'q10', '25%': 'q25',
+    rename = {'count': 'cnt', 'mean': 'average', 'std': 'stddev', '0%': 'q0', '10%': 'q10', '25%': 'q25',
               '50%': 'q50', '75%': 'q75', '80%': 'q80', '85%': 'q85', '90%': 'q90',
               '95%': 'q95', '98%': 'q98', '99%': 'q99', '100%': 'q100', }
 
     table_name = 'aggregates'
-    columns = ['ts'] + qlist + ['average', 'stddev']
+    columns = ['ts'] + qlist + ['average', 'stddev', 'sum', 'cnt']
     __aggregator_buffer = {}
     aggregator_buffer_size = 10
 
@@ -61,12 +65,17 @@ class TypeQuantiles(Aggregated, DataType):
     def processor(cls, df, last_piece, groupby='second'):
         # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
         #                                 , orient='index', columns=Aggregate.columns)
+        if df.empty:
+            logging.debug('Empty df for quantiles, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         res = series.groupby(series.index). \
             describe(percentiles=[i / 100. for i in cls.perc_list]). \
             rename(columns=cls.rename)
         res['ts'] = res.index
+        res['cnt'] = res['cnt'].astype(int)
+        res['sum'] = res['average'] * res['cnt']
         return res
 
 
@@ -86,6 +95,9 @@ class TypeDistribution(Aggregated, DataType):
 
     @classmethod
     def processor(cls, df, last_piece, bins=DEFAULT_BINS, groupby='second'):
+        if df.empty:
+            logger.debug('Empty df for distribution, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         data = {ts: np.histogram(s, bins=bins) for ts, s in series.groupby(series.index)}
@@ -107,6 +119,9 @@ class TypeHistogram(Aggregated, DataType):
 
     @classmethod
     def processor(cls, df, last_piece, groupby='second'):
+        if df.empty:
+            logger.debug('Empty df for histogram, skip %s', df)
+            return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         data = series.groupby([series.index, series.values]).size().reset_index().\
@@ -136,7 +151,7 @@ class AbstractClient(object):
 
 
 class MetricData(object):
-    def __init__(self, df, data_types, local_id):
+    def __init__(self, df, data_types, local_id, test_start):
         """
 
         :param df: pandas.DataFrame
@@ -147,6 +162,7 @@ class MetricData(object):
         df = df.set_index('metric_local_id')
         self.data_types = data_types
         self.local_id = local_id
+        df['ts'] = (df['ts'] - test_start).astype(int)
         if self.is_aggregated:
             df['second'] = (df['ts'] / 1000000).astype(int)
         self.df = df
@@ -167,10 +183,11 @@ class AbstractMetric(object):
     VALUE_COL = 'value'
     TS_COL = 'ts'
 
-    def __init__(self, meta, queue_, raw=True, aggregate=False):
+    def __init__(self, meta, queue_, test_start, raw=True, aggregate=False):
         self.local_id = str(uuid.uuid4())
         self.meta = meta
         self.routing_queue = queue_
+        self.test_start = test_start
         self.raw = raw
         self.aggregate = aggregate
         if not (raw or aggregate):
@@ -199,10 +216,7 @@ class AbstractMetric(object):
 
     def put(self, df):
         # FIXME check dtypes of an incoming dataframe
-        # df['type'] = self.type
-        # df['metric_local_id'] = self.local_id
-        # df = df.set_index('metric_local_id')
-        data = MetricData(df, self.data_types, self.local_id)
+        data = MetricData(df, self.data_types, self.local_id, self.test_start)
         self.routing_queue.put(data)
 
 
