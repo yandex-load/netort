@@ -15,12 +15,11 @@ import six
 import pandas as pd
 import datetime
 import os
-import six
 if six.PY2:
-    import queue
+    import Queue as queue
 else:
     # noinspection PyUnresolvedReferences
-    import Queue as queue
+    import queue
 
 requests.packages.urllib3.disable_warnings()
 

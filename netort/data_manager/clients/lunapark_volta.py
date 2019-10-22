@@ -5,7 +5,10 @@ import time
 import datetime
 import os
 import pkg_resources
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 from retrying import retry, RetryError
 
