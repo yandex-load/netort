@@ -207,6 +207,7 @@ class LunaClient(AbstractClient):
 
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
+        # TODO: fix symlink to local_id <-> luna_id
         link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
         if not self._job_number:
             logger.info('Public test id not available, skipped symlink creation for %s', self.symlink_artifacts_path)
@@ -265,12 +266,11 @@ class RegisterWorkerThread(QueueWorker):
         super(RegisterWorkerThread, self).__init__(queue.Queue())
         self.client = client
         self.session = requests.session()
-        for callback, ids in self.client.job.manager.callbacks.groupby('callback', sort=False):
-            if callback == self.client.put:
-                for id_ in ids.index:
-                    if id_ not in self.client.public_ids:
-                        metric = self.client.job.manager.get_metric_by_id(id_)
-                        self.queue.put(metric)
+        # Register all metrics not registered yet
+        for metric_id in self.client.job.manager.metrics:
+            if metric_id not in self.client.public_ids:
+                metric = self.client.job.manager.get_metric_by_id(metric_id)
+                self.queue.put(metric)
 
     def register(self, metric):
         self.queue.put(metric)
@@ -278,13 +278,11 @@ class RegisterWorkerThread(QueueWorker):
     def _process_pending_queue(self, progress=False):
         try:
             metric = self.queue.get_nowait()
-            if metric.local_id in self.client.public_ids:
-                return
-            metric.tag = self._register_metric(metric)
-            logger.debug(
-                'Successfully received tag %s for metric.local_id: %s (%s)',
-                metric.tag, metric.local_id, metric.meta)
-            self.client.public_ids[metric.local_id] = metric.tag
+            if metric.local_id not in self.client.public_ids:
+                metric.tag = self._register_metric(metric)
+                logger.debug('Successfully received tag %s for metric.local_id: %s (%s)',
+                             metric.tag, metric.local_id, metric.meta)
+                self.client.public_ids[metric.local_id] = metric.tag
         except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
             logger.error("Luna service unavailable", exc_info=True)
             self.client.interrupt()

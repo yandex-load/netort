@@ -49,8 +49,7 @@ class MetricsRouter(threading.Thread):
 
     def _from_buffer(self, metric_data, last_piece):
         """
-        :type metric_data: netort.data_manager.common.interfaces.MetricData
-        :rtype: pd.DataFrame
+        Stores incoming data in local buffer to aggregate it in chunks
         """
         buffered = self.__buffer.pop(metric_data.local_id, None)
         df = pd.concat([buffered, metric_data.df]) if buffered is not None else metric_data.df
@@ -63,7 +62,6 @@ class MetricsRouter(threading.Thread):
             return df
 
     def __route(self, last_piece=False):
-        # all_data = get_nowait_from_queue(self.manager.routing_queue)
         try:
             metric_data = self.manager.routing_queue.get_nowait()
         except Empty:
@@ -79,9 +77,9 @@ class MetricsRouter(threading.Thread):
             processed = self.reindex_to_local_id(
                 dtype.processor(unprocessed, last_piece),
                 metric_data.local_id)
-            # logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
-            #                                                                  len(unprocessed),
-            #                                                                  time.time()-t))
+            logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
+                                                                             len(unprocessed),
+                                                                             time.time()-t))
             if not processed.empty:
                 routed_data.setdefault(dtype, []).append(
                     processed
@@ -100,25 +98,17 @@ class MetricsRouter(threading.Thread):
         routed_data = {
             dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()
         }
-        if self.manager.callbacks.empty:
+
+        if not self.manager.callbacks:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
             time.sleep(1)
             return
-        # (for each metric type)
-        # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
+
         for data_type in routed_data:
-            try:
-                router = pd.merge(
-                    routed_data[data_type], self.manager.callbacks,
-                    how='left',
-                    left_index=True,
-                    right_index=True
-                ).groupby('callback', sort=False)
-                for callback, incoming_chunks in router:
-                    callback(data_type, incoming_chunks)
-            except TypeError:
-                logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
-                             data_type, routed_data[data_type], exc_info=True)
+            logger.debug('Callbacks are %s', self.manager.callbacks)
+            for subscriber in self.manager.callbacks:
+                callback = self.manager.subscribers[subscriber]
+                callback(data_type, routed_data[data_type])
 
     @staticmethod
     def reindex_to_local_id(df, local_id):

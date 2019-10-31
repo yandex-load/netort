@@ -161,7 +161,7 @@ class MetricData(object):
         :param data_types: list of DataType
         :param local_id: uuid4
         """
-        df['metric_local_id'] = local_id
+        df.loc[:, 'metric_local_id'] = local_id
         df = df.set_index('metric_local_id')
         self.data_types = data_types
         self.local_id = local_id
