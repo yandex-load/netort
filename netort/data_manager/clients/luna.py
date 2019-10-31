@@ -350,35 +350,34 @@ class WorkerThread(QueueWorker):
     def __update_max_length(self, new_length):
         return new_length if self.data['max_length'] < new_length else self.data['max_length']
 
-    def __update_df(self, data_type, input_df):
-        for metric_local_id, df_grouped_by_id in input_df.groupby(level=0, sort=False):
-            metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+    def __update_df(self, data_type, df):
+        metric_local_id = df['metric_local_id'].iloc[0]
+        metric = self.client.job.manager.get_metric_by_id(metric_local_id)
 
-            if not metric:
-                logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
-                return pd.DataFrame([])
+        if not metric:
+            logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)
+            return pd.DataFrame([])
 
-            if metric.local_id not in self.client.public_ids:
-                # no public_id yet, put it back
-                self.client.put(data_type, input_df)
-                logger.debug('No public id for metric {}'.format(metric.local_id))
-                self.client.register_worker.register(metric)
-                return pd.DataFrame([])
+        if metric.local_id not in self.client.public_ids:
+            # no public_id yet, put it back
+            self.client.put(data_type, df)
+            logger.debug('No public id for metric {}'.format(metric.local_id))
+            self.client.register_worker.register(metric)
+            return pd.DataFrame([])
 
-            df_grouped_by_id.loc[:, 'key_date'] = self.client.key_date
-            df_grouped_by_id.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
-            result_df = df_grouped_by_id
+        df.loc[:, 'key_date'] = self.client.key_date
+        df.loc[:, 'tag'] = self.client.public_ids[metric.local_id]
 
-            if not result_df.empty:
-                table_name = data_type.table_name
-                if not self.data.get(table_name):
-                    self.data[table_name] = {
-                        'dataframe': result_df,
-                        'columns': self.client.luna_columns + data_type.columns,
-                    }
-                else:
-                    self.data[table_name]['dataframe'] = pd.concat([self.data[table_name]['dataframe'], result_df])
-                self.data['max_length'] = self.__update_max_length(len(self.data[table_name]['dataframe']))
+        if not df.empty:
+            table_name = data_type.table_name
+            if not self.data.get(table_name):
+                self.data[table_name] = {
+                    'dataframe': df,
+                    'columns': self.client.luna_columns + data_type.columns,
+                }
+            else:
+                self.data[table_name]['dataframe'] = pd.concat([self.data[table_name]['dataframe'], df])
+            self.data['max_length'] = self.__update_max_length(len(self.data[table_name]['dataframe']))
 
         if self.data['max_length'] >= MAX_DF_LENGTH:
             self.__upload_data()

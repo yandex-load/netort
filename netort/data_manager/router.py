@@ -5,6 +5,7 @@ import pandas as pd
 import logging
 from netort.data_manager.common.interfaces import Aggregated
 
+
 if six.PY3:
     from queue import Empty
 else:  # six.PY2
@@ -63,41 +64,32 @@ class MetricsRouter(threading.Thread):
 
     def __route(self, last_piece=False):
         try:
+            # metric_data contains only one metric and one/several data_types
             metric_data = self.manager.routing_queue.get_nowait()
         except Empty:
             return
         routed_data = {}
-        if metric_data.is_aggregated:
-            from_buffer = self._from_buffer(metric_data, last_piece)
+        from_buffer = self._from_buffer(metric_data, last_piece)
         for dtype in metric_data.data_types:
             unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
             if unprocessed.empty:
                 continue
             t = time.time()
-            processed = self.reindex_to_local_id(
-                dtype.processor(unprocessed, last_piece),
-                metric_data.local_id)
+            processed = dtype.processor(metric_data.df, last_piece)
+            processed.loc[:, 'metric_local_id'] = metric_data.local_id
             logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
                                                                              len(unprocessed),
                                                                              time.time()-t))
             if not processed.empty:
-                routed_data.setdefault(dtype, []).append(
-                    processed
-                )
+                routed_data.setdefault(dtype, []).append(processed)
         if last_piece:
             for metric_local_id, df in self.__buffer.items():
                 d_types = self.manager.metrics[metric_local_id].data_types
                 for d_type in [dt for dt in d_types if dt.is_aggregated()]:
-                    processed = self.reindex_to_local_id(
-                        d_type.processor(df, last_piece),
-                        metric_local_id
-                    )
-                    routed_data.setdefault(d_type, []).append(
-                        processed
-                    )
-        routed_data = {
-            dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()
-        }
+                    processed = d_type.processor(df, last_piece)
+                    processed.loc[:, 'metric_local_id'] = metric_data.local_id
+                    routed_data.setdefault(d_type, []).append(processed)
+        routed_data = {dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()}
 
         if not self.manager.callbacks:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
@@ -109,11 +101,6 @@ class MetricsRouter(threading.Thread):
             for subscriber in self.manager.callbacks:
                 callback = self.manager.subscribers[subscriber]
                 callback(data_type, routed_data[data_type])
-
-    @staticmethod
-    def reindex_to_local_id(df, local_id):
-        df['metric_local_id'] = local_id
-        return df.set_index('metric_local_id')
 
     def wait(self, timeout=None):
         self._finished.wait(timeout=timeout)
