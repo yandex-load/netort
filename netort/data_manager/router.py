@@ -50,7 +50,8 @@ class MetricsRouter(threading.Thread):
 
     def _from_buffer(self, metric_data, last_piece):
         """
-        Stores incoming data in local buffer to aggregate it in chunks
+        :type metric_data: netort.data_manager.common.interfaces.MetricData
+        :rtype: pd.DataFrame
         """
         buffered = self.__buffer.pop(metric_data.local_id, None)
         df = pd.concat([buffered, metric_data.df]) if buffered is not None else metric_data.df
