@@ -9,7 +9,7 @@ from typing import Callable, Dict, Text, List, Union, Optional, Set, Type
 from .metrics import Metric, Event
 from .clients import available_clients
 from .router import MetricsRouter
-from .common.interfaces import AbstractMetric, DataType
+from .common.interfaces import AbstractMetric, DataType, MetricData
 
 if six.PY3:
     from queue import Queue
@@ -202,7 +202,7 @@ class DataManager(object):
         return self._new_metric(Event, test_start, raw, aggregate, name=name, **kw)
 
     def _new_metric(self, dtype, test_start, raw=True, aggregate=False, **kw):
-        # type: (Optional[AbstractMetric], float, bool, bool, **Dict) -> Optional[AbstractMetric]
+        # type: (Optional[AbstractMetric], float, bool, bool, **Dict) -> MetricData
         metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate)  # create metric object
         self.metrics_meta = kw  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
