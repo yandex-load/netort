@@ -1,5 +1,6 @@
 import collections
-
+import time
+import logging
 
 # TODO: rename to format_http_request
 def pretty_print(req):
@@ -20,3 +21,18 @@ def recursive_dict_update(d1, d2):
         else:
             d1[k] = d2[k]
     return d1
+
+
+def log_time_decorator(func):
+    """
+    logs func execution time
+    :param func:
+    :return:
+    """
+    def timed(*args, **kwargs):
+        start = time.time()
+        res = func(*args, **kwargs)
+        logging.debug('TIMER {}: {}'.format(func.__name__, round(time.time() - start, 3)))
+        return res
+
+    return timed
