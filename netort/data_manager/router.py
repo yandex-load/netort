@@ -70,7 +70,7 @@ class MetricsRouter(threading.Thread):
         except Empty:
             return
         routed_data = {}
-        from_buffer = self._from_buffer(metric_data, last_piece)
+        from_buffer = self._from_buffer(metric_data, last_piece) if metric_data.is_aggregated else metric_data.df
         for dtype in metric_data.data_types:
             unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
             if unprocessed.empty:
