@@ -3,6 +3,9 @@ import time
 import logging
 
 # TODO: rename to format_http_request
+from threading import Lock
+
+
 def pretty_print(req):
     return '{header}\n{query}\n{http_headers}\n\n{body}\n{footer}'.format(
         header='-----------QUERY START-----------',
@@ -36,3 +39,25 @@ def log_time_decorator(func):
         return res
 
     return timed
+
+
+class thread_safe_property(object):
+    # credits to https://stackoverflow.com/a/39217007/3316574
+    def __init__(self, func):
+        self._func = func
+        self.__name__ = func.__name__
+        self.__doc__ = func.__doc__
+        self._lock = Lock()
+
+    def __get__(self, obj, klass=None):
+        if obj is None: return None
+        # __get__ may be called concurrently
+        with self._lock:
+            # another thread may have computed property value
+            # while this thread was in __get__
+            if self.__name__ not in obj.__dict__:
+                # none computed `_func` yet, do so (under lock) and set attribute
+                obj.__dict__[self.__name__] = self._func(obj)
+        # by now, attribute is guaranteed to be set,
+        # either by this thread or another
+        return obj.__dict__[self.__name__]

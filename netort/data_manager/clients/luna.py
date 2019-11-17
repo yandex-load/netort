@@ -2,7 +2,7 @@ from requests import HTTPError, ConnectionError
 from requests.exceptions import Timeout, TooManyRedirects
 
 from ..common.interfaces import AbstractClient, QueueWorker
-from ..common.util import pretty_print
+from ..common.util import pretty_print, thread_safe_property
 
 from retrying import retry
 
@@ -83,7 +83,7 @@ class LunaClient(AbstractClient):
             raise RuntimeError('Api address SHOULD be specified')
         self._job_number = None
 
-    @property
+    @thread_safe_property
     def job_number(self):
         if not self._job_number and not self.failed.is_set():
             try:

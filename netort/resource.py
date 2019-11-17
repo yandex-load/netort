@@ -10,6 +10,7 @@ import serial
 import yaml
 import socket
 import six
+from netort.data_manager.common.util import thread_safe_property
 from six.moves.urllib.parse import urlparse
 from contextlib import closing
 
@@ -294,11 +295,9 @@ class HttpOpener(object):
                 logger.warning('Invalid HTTP response trying to get info about resource: %s', self.url, exc_info=True)
                 raise
 
-    @property
+    @thread_safe_property
     def get_filename(self):
-        if not self._filename:
-            self.download_file(use_cache=True)
-        return self._filename
+        return self.download_file(use_cache=True)
 
     @property
     def hash(self):
@@ -464,7 +463,7 @@ class S3Opener(object):
         self._filename = None
         self._conn = None
 
-    @property
+    @thread_safe_property
     def conn(self):
         if self._conn is None:
             if not boto:
@@ -488,11 +487,9 @@ class S3Opener(object):
             self._filename = self.get_file()
         return open(self._filename, 'rb')
 
-    @property
+    @thread_safe_property
     def get_filename(self):
-        if not self._filename:
-            self._filename = self.get_file()
-        return self._filename
+        return self.get_file()
 
     def tmpfile_path(self):
         hasher = hashlib.md5()
