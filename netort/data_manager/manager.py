@@ -4,6 +4,7 @@ import time
 import os
 import getpass
 import six
+from netort.data_manager.common.util import thread_safe_property
 from typing import Callable, Dict, Text, List, Union, Optional, Set, Type
 
 from .metrics import Metric, Event
@@ -110,7 +111,7 @@ class DataSession(object):
                 logger.debug('Client metric updated: %s', client)
 
     # TODO: artifacts dir should be inside "local" client. Or does it?
-    @property
+    @thread_safe_property
     def artifacts_dir(self):
         # type: () -> Text
         if not self._artifacts_dir:

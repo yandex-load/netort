@@ -13,7 +13,7 @@ except ImportError:
 from retrying import retry, RetryError
 
 from ..common.interfaces import AbstractClient
-from ..common.util import pretty_print
+from ..common.util import pretty_print, thread_safe_property
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -99,7 +99,7 @@ class LunaparkVoltaClient(AbstractClient):
         self.worker.start()
         logger.info('Lunapark Volta public job id: %s', self.job_number)
 
-    @property
+    @thread_safe_property
     def job_number(self):
         if self.failed.is_set():
             return
