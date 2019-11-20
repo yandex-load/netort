@@ -63,6 +63,12 @@ class MetricsRouter(threading.Thread):
         else:
             return df
 
+    @staticmethod
+    def __process_df(df, dtype, local_id):
+        processed_df = dtype.processor(df)
+        processed_df.loc[:, 'metric_local_id'] = local_id
+        return processed_df
+
     def __route(self, last_piece=False):
         try:
             # metric_data contains only one metric and one/several data_types
@@ -73,35 +79,29 @@ class MetricsRouter(threading.Thread):
         from_buffer = self._from_buffer(metric_data, last_piece) if metric_data.is_aggregated else metric_data.df
         for dtype in metric_data.data_types:
             unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
-            if unprocessed.empty:
-                continue
-            t = time.time()
-            processed = dtype.processor(metric_data.df, last_piece)
-            processed.loc[:, 'metric_local_id'] = metric_data.local_id
-            logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
-                                                                             len(unprocessed),
-                                                                             time.time()-t))
-            if not processed.empty:
-                routed_data.setdefault(dtype, []).append(processed)
+            if not unprocessed.empty:
+                processed = self.__process_df(unprocessed, dtype, metric_data.local_id)
+                if not processed.empty:
+                    routed_data.setdefault(dtype, []).append(processed)
+
         if last_piece:
             for metric_local_id, df in self.__buffer.items():
                 d_types = self.manager.metrics[metric_local_id].data_types
-                for d_type in [dt for dt in d_types if dt.is_aggregated()]:
-                    processed = d_type.processor(df, last_piece)
-                    processed.loc[:, 'metric_local_id'] = metric_data.local_id
-                    routed_data.setdefault(d_type, []).append(processed)
-        routed_data = {dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()}
+                for dtype in [dt for dt in d_types if dt.is_aggregated()]:
+                    processed = self.__process_df(df, dtype, metric_local_id)
+                    routed_data.setdefault(dtype, []).append(processed)
+
+        for dtype, dfs in routed_data.items():
+            for df in dfs:
+                for subscriber in self.manager.callbacks:
+                    callback = self.manager.subscribers[subscriber]
+                    callback(dtype, df)
+            routed_data[dtype] = pd.concat(dfs, sort=False)
 
         if not self.manager.callbacks:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
             time.sleep(1)
             return
-
-        for data_type in routed_data:
-            logger.debug('Callbacks are %s', self.manager.callbacks)
-            for subscriber in self.manager.callbacks:
-                callback = self.manager.subscribers[subscriber]
-                callback(data_type, routed_data[data_type])
 
     def wait(self, timeout=None):
         self._finished.wait(timeout=timeout)
