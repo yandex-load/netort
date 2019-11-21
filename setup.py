@@ -15,7 +15,7 @@ common library for yandex-load org
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
         'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas>=0.23.0',
-        'pathlib', 'typing'
+        'pathlib', 'typing', 'numpy'
     ],
     setup_requires=[
         # 'pytest-runner', 'flake8',
