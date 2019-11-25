@@ -85,16 +85,17 @@ class LunaClient(AbstractClient):
 
     @thread_safe_property
     def job_number(self):
-        if not self._job_number and not self.failed.is_set():
+        if not self.failed.is_set():
             try:
-                self._job_number = self.create_job()
-                self.__test_id_link_to_jobno()
+                _job_number = self.create_job()
+                self.__test_id_link_to_jobno(_job_number)
             except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
                 logger.error('Failed to create Luna job', exc_info=True)
                 self.failed.set()
                 self.worker.interrupt()
                 self.interrupt()
-        return self._job_number
+            else:
+                return _job_number
 
     def put(self, data_type, df):
         if not self.failed.is_set():
@@ -205,11 +206,11 @@ class LunaClient(AbstractClient):
         response = send_chunk(self.session, prepared_req)
         logger.debug('Update job status: %s', response.status_code)
 
-    def __test_id_link_to_jobno(self):
+    def __test_id_link_to_jobno(self, jobno):
         """  create symlink local_id <-> public_id  """
         # TODO: fix symlink to local_id <-> luna_id
         link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
-        if not self._job_number:
+        if not jobno:
             logger.info('Public test id not available, skipped symlink creation for %s', self.symlink_artifacts_path)
             return
         if not os.path.exists(link_dir):
@@ -219,17 +220,17 @@ class LunaClient(AbstractClient):
                 os.path.join(
                     os.path.relpath(self.job.artifacts_base_dir, link_dir), self.job.job_id
                 ),
-                os.path.join(link_dir, str(self.job_number))
+                os.path.join(link_dir, str(jobno))
             )
         except OSError:
             logger.warning(
                 'Unable to create %s/%s symlink for test: %s',
-                self.symlink_artifacts_path, self.job_number, self.job.job_id
+                self.symlink_artifacts_path, jobno, self.job.job_id
             )
         else:
             logger.debug(
                 'Symlink %s/%s created for job: %s',
-                self.symlink_artifacts_path, self.job_number, self.job.job_id
+                self.symlink_artifacts_path, jobno, self.job.job_id
             )
 
     def close(self, test_end):
