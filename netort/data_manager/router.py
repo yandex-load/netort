@@ -5,6 +5,7 @@ import pandas as pd
 import logging
 from netort.data_manager.common.interfaces import Aggregated
 
+
 if six.PY3:
     from queue import Empty
 else:  # six.PY2
@@ -62,68 +63,45 @@ class MetricsRouter(threading.Thread):
         else:
             return df
 
+    @staticmethod
+    def __process_df(df, dtype, local_id):
+        processed_df = dtype.processor(df)
+        processed_df.loc[:, 'metric_local_id'] = local_id
+        return processed_df
+
     def __route(self, last_piece=False):
-        # all_data = get_nowait_from_queue(self.manager.routing_queue)
         try:
+            # metric_data contains only one metric and one/several data_types
             metric_data = self.manager.routing_queue.get_nowait()
         except Empty:
             return
         routed_data = {}
-        if metric_data.is_aggregated:
-            from_buffer = self._from_buffer(metric_data, last_piece)
+        from_buffer = self._from_buffer(metric_data, last_piece) if metric_data.is_aggregated else metric_data.df
         for dtype in metric_data.data_types:
             unprocessed = from_buffer if dtype.is_aggregated() else metric_data.df
-            if unprocessed.empty:
-                continue
-            t = time.time()
-            processed = self.reindex_to_local_id(
-                dtype.processor(unprocessed, last_piece),
-                metric_data.local_id)
-            # logger.debug('Processing {} of length {} took {} seconds'.format(dtype.__name__,
-            #                                                                  len(unprocessed),
-            #                                                                  time.time()-t))
-            if not processed.empty:
-                routed_data.setdefault(dtype, []).append(
-                    processed
-                )
+            if not unprocessed.empty:
+                processed = self.__process_df(unprocessed, dtype, metric_data.local_id)
+                if not processed.empty:
+                    routed_data.setdefault(dtype, []).append(processed)
+
         if last_piece:
             for metric_local_id, df in self.__buffer.items():
                 d_types = self.manager.metrics[metric_local_id].data_types
-                for d_type in [dt for dt in d_types if dt.is_aggregated()]:
-                    processed = self.reindex_to_local_id(
-                        d_type.processor(df, last_piece),
-                        metric_local_id
-                    )
-                    routed_data.setdefault(d_type, []).append(
-                        processed
-                    )
-        routed_data = {
-            dtype: pd.concat(dfs) for dtype, dfs in routed_data.items()
-        }
-        if self.manager.callbacks.empty:
+                for dtype in [dt for dt in d_types if dt.is_aggregated()]:
+                    processed = self.__process_df(df, dtype, metric_local_id)
+                    routed_data.setdefault(dtype, []).append(processed)
+
+        for dtype, dfs in routed_data.items():
+            for df in dfs:
+                for subscriber in self.manager.callbacks:
+                    callback = self.manager.subscribers[subscriber]
+                    callback(dtype, df)
+            routed_data[dtype] = pd.concat(dfs, sort=False)
+
+        if not self.manager.callbacks:
             logger.debug('No subscribers/callbacks for metrics yet... skipped metrics')
             time.sleep(1)
             return
-        # (for each metric type)
-        # left join buffer and callbacks, group data by 'callback' then call callback w/ resulting dataframe
-        for data_type in routed_data:
-            try:
-                router = pd.merge(
-                    routed_data[data_type], self.manager.callbacks,
-                    how='left',
-                    left_index=True,
-                    right_index=True
-                ).groupby('callback', sort=False)
-                for callback, incoming_chunks in router:
-                    callback(data_type, incoming_chunks)
-            except TypeError:
-                logger.error('Trash/malformed data sinked into metric type `%s`. Data:\n%s',
-                             data_type, routed_data[data_type], exc_info=True)
-
-    @staticmethod
-    def reindex_to_local_id(df, local_id):
-        df['metric_local_id'] = local_id
-        return df.set_index('metric_local_id')
 
     def wait(self, timeout=None):
         self._finished.wait(timeout=timeout)

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='netort',
-    version='0.6.10',
+    version='0.7.5',
     description='common library for yandex-load org',
     longer_description='''
 common library for yandex-load org
@@ -15,6 +15,7 @@ common library for yandex-load org
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
         'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas>=0.23.0',
+        'pathlib', 'typing', 'numpy'
     ],
     setup_requires=[
         # 'pytest-runner', 'flake8',

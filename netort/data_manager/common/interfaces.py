@@ -1,9 +1,11 @@
 # coding=utf-8
 import threading
-from collections import Counter
 
 import pandas as pd
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 import uuid
 import numpy as np
 import logging
@@ -26,10 +28,9 @@ class DataType(object):
     is_aggregated = False
 
     @classmethod
-    def processor(cls, df, last_piece):
+    def processor(cls, df):
         """
         :type df: pandas.DataFrame
-        :type last_piece: bool
         :rtype: pandas.DataFrame
         """
         return df
@@ -62,7 +63,7 @@ class TypeQuantiles(Aggregated, DataType):
     aggregator_buffer_size = 10
 
     @classmethod
-    def processor(cls, df, last_piece, groupby='second'):
+    def processor(cls, df, groupby='second'):
         # result = pd.DataFrame.from_dict({ts: self.aggregates(df) for ts, df in by_second.items()}
         #                                 , orient='index', columns=Aggregate.columns)
         if df.empty:
@@ -94,7 +95,7 @@ class TypeDistribution(Aggregated, DataType):
     ))
 
     @classmethod
-    def processor(cls, df, last_piece, bins=DEFAULT_BINS, groupby='second'):
+    def processor(cls, df, bins=DEFAULT_BINS, groupby='second'):
         if df.empty:
             logger.debug('Empty df for distribution, skip %s', df)
             return pd.DataFrame()
@@ -106,9 +107,9 @@ class TypeDistribution(Aggregated, DataType):
             [pd.DataFrame.from_dict(
                 {'l': bins[:-1],
                  'r': bins[1:],
-                 'cnt': data,
+                 'cnt': cnt,
                  'ts': ts}
-            ).query('cnt > 0') for ts, (data, bins) in data.items()]
+            ).query('cnt > 0') for ts, (cnt, bins) in data.items()]
         )
         return result
 
@@ -118,14 +119,14 @@ class TypeHistogram(Aggregated, DataType):
     columns = ['ts', 'category', 'cnt']
 
     @classmethod
-    def processor(cls, df, last_piece, groupby='second'):
+    def processor(cls, df, groupby='second'):
         if df.empty:
             logger.debug('Empty df for histogram, skip %s', df)
             return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
         data = series.groupby([series.index, series.values]).size().reset_index().\
-            rename(columns={'second':'ts', 'level_1': 'category', 'value': 'cnt'})
+            rename(columns={'second': 'ts', 'level_1': 'category', 'value': 'cnt'})
         return data
 
 
@@ -158,13 +159,13 @@ class MetricData(object):
         :param data_types: list of DataType
         :param local_id: uuid4
         """
-        df['metric_local_id'] = local_id
+        df.loc[:, 'metric_local_id'] = local_id
         df = df.set_index('metric_local_id')
         self.data_types = data_types
         self.local_id = local_id
-        df['ts'] = (df['ts'] - test_start).astype(int)
+        df.loc[:, 'ts'] = (df['ts'] - test_start).astype(int)
         if self.is_aggregated:
-            df['second'] = (df['ts'] / 1000000).astype(int)
+            df.loc[:, 'second'] = (df['ts'] / 1000000).astype(int)
         self.df = df
 
     @property
