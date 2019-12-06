@@ -198,7 +198,7 @@ class LunaClient(AbstractClient):
                 api_address=self.api_address,
                 path=self.close_job_path,
             ),
-            params={'job': self._job_number,
+            params={'job': self.job_number,
                     'duration': int(duration)}
         )
         prepared_req = req.prepare()
