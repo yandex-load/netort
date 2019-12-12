@@ -53,6 +53,14 @@ def if_not_failed(func):
     return wrapped
 
 
+def get_env(name, default=''):
+    if name in os.environ and os.environ[name] != '':
+        return os.environ[name]
+    else:
+        logger.warning('Fail to get %s from ENV variables, default value used.', name)
+        return default
+
+
 class LunaClient(AbstractClient):
     create_metric_path = '/create_metric/'
     update_metric_path = '/update_metric/'
@@ -76,6 +84,8 @@ class LunaClient(AbstractClient):
         self.worker = WorkerThread(self)
         self.worker.start()
         self.session = requests.session()
+        self.clickhouse_user = get_env('XCLICKHOUSEUSER', 'lunapark')
+        self.clickhouse_key = get_env('XCLICKHOUSEKEY', 'lunapark')
 
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
@@ -429,8 +439,8 @@ class WorkerThread(QueueWorker):
             )
         )
         req.headers = {
-            'X-ClickHouse-User': 'lunapark',
-            'X-ClickHouse-Key': 'lunapark'
+            'X-ClickHouse-User': self.client.clickhouse_user,
+            'X-ClickHouse-Key': self.client.clickhouse_key
         }
         req.data = body
         prepared_req = req.prepare()
