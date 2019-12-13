@@ -53,14 +53,6 @@ def if_not_failed(func):
     return wrapped
 
 
-def get_env(name, default=''):
-    if name in os.environ and os.environ[name] != '':
-        return os.environ[name]
-    else:
-        logger.warning('Fail to get %s from ENV variables, default value used.', name)
-        return default
-
-
 class LunaClient(AbstractClient):
     create_metric_path = '/create_metric/'
     update_metric_path = '/update_metric/'
@@ -84,8 +76,8 @@ class LunaClient(AbstractClient):
         self.worker = WorkerThread(self)
         self.worker.start()
         self.session = requests.session()
-        self.clickhouse_user = get_env('XCLICKHOUSEUSER', 'lunapark')
-        self.clickhouse_key = get_env('XCLICKHOUSEKEY', 'lunapark')
+        self.clickhouse_user = meta.get('clickhouse_user', 'lunapark')
+        self.clickhouse_key = meta.get('clickhouse_key', 'lunapark')
 
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
