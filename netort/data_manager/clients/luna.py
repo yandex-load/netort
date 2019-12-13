@@ -76,6 +76,8 @@ class LunaClient(AbstractClient):
         self.worker = WorkerThread(self)
         self.worker.start()
         self.session = requests.session()
+        self.clickhouse_user = meta.get('clickhouse_user', 'lunapark')
+        self.clickhouse_key = meta.get('clickhouse_key', 'lunapark')
 
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
@@ -429,8 +431,8 @@ class WorkerThread(QueueWorker):
             )
         )
         req.headers = {
-            'X-ClickHouse-User': 'lunapark',
-            'X-ClickHouse-Key': 'lunapark'
+            'X-ClickHouse-User': self.client.clickhouse_user,
+            'X-ClickHouse-Key': self.client.clickhouse_key
         }
         req.data = body
         prepared_req = req.prepare()
