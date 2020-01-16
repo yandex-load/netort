@@ -282,10 +282,15 @@ class RegisterWorkerThread(QueueWorker):
         try:
             metric = self.queue.get_nowait()
             if metric.local_id not in self.client.public_ids:
-                metric.tag = self._register_metric(metric)
-                logger.debug('Successfully received tag %s for metric.local_id: %s (%s)',
-                             metric.tag, metric.local_id, metric.meta)
-                self.client.public_ids[metric.local_id] = metric.tag
+                if metric.parent is not None and metric.parent.local_id not in self.client.public_ids:
+                    logger.debug('Metric {} waiting for parent metric {} to be registered'.format(metric.local_id,
+                                                                                                  metric.parent.local_id))
+                    self.register(metric)
+                else:
+                    metric.tag = self._register_metric(metric)
+                    logger.debug('Successfully received tag %s for metric.local_id: %s (%s)',
+                                 metric.tag, metric.local_id, metric.meta)
+                    self.client.public_ids[metric.local_id] = metric.tag
         except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
             logger.error("Luna service unavailable", exc_info=True)
             self.client.interrupt()
@@ -298,7 +303,8 @@ class RegisterWorkerThread(QueueWorker):
             'type': metric.type.table_name,
             'types': [t.table_name for t in metric.data_types],
             'local_id': metric.local_id,
-            'meta': metric.meta
+            'meta': metric.meta,
+            'parent': self.client.public_ids[metric.parent.local_id] if metric.parent is not None else None
         }
         req = requests.Request(
             'POST',
@@ -425,9 +431,8 @@ class WorkerThread(QueueWorker):
             'POST', "{api}{data_upload_handler}{query}".format(
                 api=self.client.api_address,  # production proxy
                 data_upload_handler=self.client.upload_metric_path,
-                query="INSERT INTO {table} FORMAT TSV".format(
-                    table="{db}.{type}".format(db=self.client.dbname, type=table_name)  # production
-                )
+                query="INSERT INTO {db}.{table} FORMAT TSV".format(db=self.client.dbname,
+                                                                   table=table_name)  # production
             )
         )
         req.headers = {

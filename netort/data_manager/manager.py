@@ -187,8 +187,8 @@ class DataManager(object):
         self.router = MetricsRouter(self)   # type: MetricsRouter
         self.router.start()
 
-    def new_true_metric(self, name, test_start, raw=True, aggregate=False, **kw):
-        # type: (Text, float, bool, bool, **Dict) -> Type[Metric]
+    def new_true_metric(self, name, test_start, raw=True, aggregate=False, parent=None, **kw):
+        # type: (Text, float, bool, bool, **Dict) -> AbstractMetric
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -196,15 +196,15 @@ class DataManager(object):
         Return:
             metric: one of Metric
         """
-        return self._new_metric(Metric, test_start, raw, aggregate, name=name, **kw)
+        return self._new_metric(Metric, test_start, raw, aggregate, name=name, parent=parent, **kw)
 
-    def new_event_metric(self, name, test_start, raw=True, aggregate=False, **kw):
-        # type: (Text, float, bool, bool, **Dict) -> Type[Event]
-        return self._new_metric(Event, test_start, raw, aggregate, name=name, **kw)
+    def new_event_metric(self, name, test_start, raw=True, aggregate=False, parent=None, **kw):
+        # type: (Text, float, bool, bool, **Dict) -> AbstractMetric
+        return self._new_metric(Event, test_start, raw, aggregate, name=name, parent=parent, **kw)
 
-    def _new_metric(self, dtype, test_start, raw=True, aggregate=False, **kw):
-        # type: (Optional[AbstractMetric], float, bool, bool, **Dict) -> MetricData
-        metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate)  # create metric object
+    def _new_metric(self, dtype, test_start, raw=True, aggregate=False, parent=None, **kw):
+        # type: (Type[AbstractMetric], float, bool, bool, **Dict) -> AbstractMetric
+        metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate, parent=parent)  # create metric object
         self.metrics_meta = kw  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
         for callback in self.callbacks:
