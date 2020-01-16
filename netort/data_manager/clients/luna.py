@@ -250,7 +250,7 @@ class LunaClient(AbstractClient):
         self._close_job(duration=test_end-self.job.test_start)
         # FIXME hardcoded host
         # FIXME we dont know front hostname, because api address now is clickhouse address
-        logger.info('Luna job url: %s%s', 'https://volta.yandex-team.ru/tests/', self.job_number)
+        logger.info('Luna job url: %s%s', 'https://luna.yandex-team.ru/tests/', self.job_number)
         logger.info('Luna client done its work')
 
     def interrupt(self):
