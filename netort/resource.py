@@ -169,7 +169,7 @@ def retry(func):
             try:
                 return func(self, *args, **kwargs)
             except Exception:
-                print('{} failed. Retrying.'.format(func))
+                logger.error('{} failed. Retrying.'.format(func), exc_info=True)
                 continue
         return func(self, *args, **kwargs)
     return with_retry

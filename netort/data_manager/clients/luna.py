@@ -304,7 +304,8 @@ class RegisterWorkerThread(QueueWorker):
             'types': [t.table_name for t in metric.data_types],
             'local_id': metric.local_id,
             'meta': metric.meta,
-            'parent': self.client.public_ids[metric.parent.local_id] if metric.parent is not None else None
+            'parent': self.client.public_ids[metric.parent.local_id] if metric.parent is not None else None,
+            'case': metric.case
         }
         req = requests.Request(
             'POST',
