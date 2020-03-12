@@ -6,6 +6,7 @@ from ..common.util import pretty_print, thread_safe_property
 
 from retrying import retry
 
+import json
 import pkg_resources
 import logging
 import requests
@@ -124,6 +125,15 @@ class LunaClient(AbstractClient):
                     uploader_ua=my_user_agent
                 )
             }
+        request_data = {
+            'test_start': int(self.job.test_start),
+            'host': self.job.tankapi_info.host,
+            'port': self.job.tankapi_info.port,
+            'local_id': self.job.tankapi_info.test_id,
+            'configs': self._get_encoded_configs_content()
+        }
+        if request_data['host'] is None or request_data['port'] is None:
+            logger.warning('Tankapi host and/or port are unspecified. Artifacts & configs would be unavailable in Luna')
         req = requests.Request(
             'POST',
             "{api_address}{path}".format(
@@ -131,7 +141,7 @@ class LunaClient(AbstractClient):
                 path=self.create_job_path
             ),
             headers=headers,
-            data={'test_start': int(self.job.test_start)}
+            data=request_data
         )
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
@@ -148,6 +158,18 @@ class LunaClient(AbstractClient):
         else:
             logger.info('Luna job created: %s', job_id)
             return job_id
+
+    def _get_encoded_configs_content(self):
+        config_dir = os.path.dirname(self.job.artifacts_base_dir)
+        config_filenames = {'validated_conf.yaml', 'configinitial.yaml', 'phantom_SXNT_b.conf'}
+        files = config_filenames & set(os.listdir(config_dir))
+        result = {}
+        for file_name in files:
+            with open(os.path.join(config_dir, file_name)) as file:
+                content = file.read()
+                result[file_name] = content
+        logger.info('Config: {}'.format(result))
+        return json.dumps(result)
 
     @if_not_failed
     def update_job(self, meta):
