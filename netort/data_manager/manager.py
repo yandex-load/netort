@@ -72,13 +72,19 @@ class DataSession(object):
             else:
                 raise NotImplementedError('Unknown client type: %s' % type_)
 
-    def new_true_metric(self, name, raw=True, aggregate=False, **kw):
-        # type: (Text, bool, bool, **Dict) -> Type[Metric]
-        return self.manager.new_true_metric(name, self.test_start, raw, aggregate, **kw)
+    def new_true_metric(self, meta, raw=True, aggregate=False, parent=None, case=None):
+        # type: (dict, bool, bool, str, str) -> AbstractMetric
+        return self.manager.new_true_metric(meta=meta,
+                                            test_start=self.test_start,
+                                            raw=raw, aggregate=aggregate,
+                                            parent=parent, case=case)
 
-    def new_event_metric(self, name, raw=True, aggregate=False, **kw):
-        # type: (Text, bool, bool, **Dict) -> Type[Event]
-        return self.manager.new_event_metric(name, self.test_start, raw, aggregate, **kw)
+    def new_event_metric(self, meta, raw=True, aggregate=False, parent=None, case=None):
+        # type: (dict, bool, bool, str, str) -> AbstractMetric
+        return self.manager.new_event_metric(meta=meta,
+                                             test_start=self.test_start,
+                                             raw=raw, aggregate=aggregate,
+                                             parent=parent, case=case)
 
     def subscribe(self, callback):
         # type: (Callable) -> Any
@@ -187,8 +193,8 @@ class DataManager(object):
         self.router = MetricsRouter(self)   # type: MetricsRouter
         self.router.start()
 
-    def new_true_metric(self, name, test_start, raw=True, aggregate=False, parent=None, **kw):
-        # type: (Text, float, bool, bool, **Dict) -> AbstractMetric
+    def new_true_metric(self, meta, test_start, raw=True, aggregate=False, parent=None, case=None):
+        # type: (dict, float, bool, bool, str, str) -> AbstractMetric
         """
         Create and register metric,
         find subscribers for this metric (using meta as filter) and subscribe
@@ -196,16 +202,20 @@ class DataManager(object):
         Return:
             metric: one of Metric
         """
-        return self._new_metric(Metric, test_start, raw, aggregate, name=name, parent=parent, **kw)
+        return self._new_metric(Metric, meta, test_start, raw, aggregate, parent=parent, case=case)
 
-    def new_event_metric(self, name, test_start, raw=True, aggregate=False, parent=None, **kw):
-        # type: (Text, float, bool, bool, **Dict) -> AbstractMetric
-        return self._new_metric(Event, test_start, raw, aggregate, name=name, parent=parent, **kw)
+    def new_event_metric(self, meta, test_start, raw=True, aggregate=False, parent=None, case=None):
+        # type: (dict, float, bool, bool, str, str) -> AbstractMetric
+        return self._new_metric(Event, meta, test_start, raw, aggregate, parent=parent, case=case)
 
-    def _new_metric(self, dtype, test_start, raw=True, aggregate=False, parent=None, **kw):
-        # type: (Type[AbstractMetric], float, bool, bool, **Dict) -> AbstractMetric
-        metric_obj = dtype(kw, self.routing_queue, test_start, raw=raw, aggregate=aggregate, parent=parent)  # create metric object
-        self.metrics_meta = kw  # register metric meta
+    def _new_metric(self, dtype, meta, test_start, raw=True, aggregate=False, parent=None, case=None):
+        # type: (Type[AbstractMetric], dict, float, bool, bool, str, str) -> AbstractMetric
+        metric_obj = dtype(meta=meta,
+                           _queue=self.routing_queue,
+                           test_start=test_start,
+                           raw=raw, aggregate=aggregate,
+                           parent=parent, case=case)  # create metric object
+        self.metrics_meta = meta  # register metric meta
         self.metrics[metric_obj.local_id] = metric_obj  # register metric object
         for callback in self.callbacks:
             self.callbacks[callback].add(metric_obj.local_id)
