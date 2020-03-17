@@ -3,8 +3,8 @@ import numpy as np
 
 
 class Metric(AbstractMetric):
-    def __init__(self, **kw):
-        super(Metric, self).__init__(**kw)
+    def __init__(self, meta, queue, test_start, raw=True, aggregate=False):
+        super(Metric, self).__init__(meta, queue, test_start, raw=raw, aggregate=aggregate)
         self.dtypes = {
             'ts': np.int64,
             'value': np.float64

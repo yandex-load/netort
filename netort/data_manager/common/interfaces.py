@@ -184,15 +184,13 @@ class AbstractMetric(object):
     VALUE_COL = 'value'
     TS_COL = 'ts'
 
-    def __init__(self, meta, _queue, test_start, raw=True, aggregate=False, parent=None, case=None):
+    def __init__(self, meta, queue_, test_start, raw=True, aggregate=False):
         self.local_id = str(uuid.uuid4())
         self.meta = meta
-        self.routing_queue = _queue
+        self.routing_queue = queue_
         self.test_start = test_start
         self.raw = raw
         self.aggregate = aggregate
-        self.parent = parent
-        self.case = case
         if not (raw or aggregate):
             raise ValueError('Either raw or aggregate must be True to upload some data')
 
