@@ -6,10 +6,25 @@ from datetime import datetime
 
 import signal
 from netort.data_manager import DataSession
-from yandextank.plugins.Phantom.reader import string_to_df_microsec
+import pandas as pd
 import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+
+def string_to_df_microsec(data):
+    # start_time = time.time()
+    try:
+        df = pd.read_csv(StringIO(data), sep='\t', names=phout_columns, na_values='', dtype=dtypes, quoting=QUOTE_NONE)
+    except CParserError as e:
+        logger.error(e.message)
+        logger.error('Incorrect phout data: {}'.format(data))
+        return
+
+    df['ts'] = (df['send_ts'] * 1e6 + df['interval_real']).astype(int)
+    df['tag'] = df.tag.str.rsplit('#', 1, expand=True)[0]
+    # logger.debug("Chunk decode time: %.2fms", (time.time() - start_time) * 1000)
+    return df
 
 
 def get_handler(data_session):

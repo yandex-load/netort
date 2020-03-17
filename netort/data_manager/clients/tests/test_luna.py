@@ -1,7 +1,8 @@
 from netort.data_manager.clients import LunaClient
-from netort.data_manager.common.interfaces import TypeEvents, TypeQuantiles, TypeHistogram, TypeTimeSeries, TypeDistribution
+from netort.data_manager.common.interfaces import TypeEvents
 import pandas as pd
 import pytest
+
 
 class TestLunaClient(object):
 
