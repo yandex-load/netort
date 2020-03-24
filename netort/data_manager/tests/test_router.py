@@ -44,4 +44,3 @@ class TestAggregatorBuffer(object):
                                       len(self.metrics_router._MetricsRouter__aggregator_buffer.get('metric1', []))
         assert len(self.df1) + len(self.df2) == len(res21) + len(res22)
         assert self.metrics_router._MetricsRouter__aggregator_buffer.get('metric2', []) is None
-

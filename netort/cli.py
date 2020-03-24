@@ -6,10 +6,25 @@ from datetime import datetime
 
 import signal
 from netort.data_manager import DataSession
-from yandextank.plugins.Phantom.reader import string_to_df_microsec
+import pandas as pd
 import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+
+def string_to_df_microsec(data):
+    # start_time = time.time()
+    try:
+        df = pd.read_csv(StringIO(data), sep='\t', names=phout_columns, na_values='', dtype=dtypes, quoting=QUOTE_NONE)
+    except CParserError as e:
+        logger.error(e.message)
+        logger.error('Incorrect phout data: {}'.format(data))
+        return
+
+    df['ts'] = (df['send_ts'] * 1e6 + df['interval_real']).astype(int)
+    df['tag'] = df.tag.str.rsplit('#', 1, expand=True)[0]
+    # logger.debug("Chunk decode time: %.2fms", (time.time() - start_time) * 1000)
+    return df
 
 
 def get_handler(data_session):
@@ -68,7 +83,7 @@ def get_uploader(data_session, column_mapping, overall_only=False):
 def main():
     parser = argparse.ArgumentParser(description='Process phantom output.')
     parser.add_argument('phout', type=str, help='path to phantom output file')
-    parser.add_argument('--url', type=str, default='https://volta-back-testing.common-int.yandex-team.ru/')
+    parser.add_argument('--url', type=str, default='https://test-back.luna.yandex-team.ru/')
     parser.add_argument('--name', type=str, help='test name', default=str(datetime.utcnow()))
     parser.add_argument('--db_name', type=str, help='ClickHouse database name', default='luna_test')
     args = parser.parse_args()

@@ -1,6 +1,9 @@
 import os
 import json
-import pathlib
+try:
+    import pathlib
+except ImportError:
+    import pathlib2 as pathlib
 import numpy as np
 import pandas as pd
 import time
@@ -16,9 +19,11 @@ import pytest
 def empty_data_frame():
     return pd.DataFrame(columns=['ts', 'value'])
 
+
 @pytest.fixture()
 def trivial_data_frame():
     return pd.DataFrame([[0, 0]], columns=['ts', 'value'])
+
 
 @pytest.fixture()
 def sin_data_frame():
@@ -32,6 +37,7 @@ def sin_data_frame():
     df['value'] = np.sin(Xdot)
     return df
 
+
 @pytest.fixture()
 def event_data_frame():
     SIZE = 200
@@ -43,6 +49,7 @@ def event_data_frame():
     df['ts'] = X
     df['value'] = np.random.choice("a quick brown fox jumped over the lazy dog".split(), len(X))
     return df
+
 
 @pytest.fixture()
 def data_session(tmp_path):
@@ -80,7 +87,6 @@ def test_dir_created(tmp_path):
     assert os.path.isdir(artifacts_base_dir), "Artifacts base dir should exist after datasession have ended"
     assert os.path.isdir(data_session.artifacts_dir), "Artifacts dir should exist after datasession have ended"
     assert os.path.isfile(pathlib.Path(data_session.artifacts_dir) / 'meta.json'), "Metadata file should have been created"
-
 
     with open(pathlib.Path(data_session.artifacts_dir) / 'meta.json') as meta_file:
         meta = json.load(meta_file)
