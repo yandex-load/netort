@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='netort',
-    version='0.7.8',
+    version='0.7.9',
     description='common library for yandex-load org',
     longer_description='''
 common library for yandex-load org

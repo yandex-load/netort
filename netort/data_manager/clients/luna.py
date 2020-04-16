@@ -436,14 +436,8 @@ class WorkerThread(QueueWorker):
                                                                    table=table_name)  # production
             )
         )
-        req.headers = {
-            'X-ClickHouse-User': self.client.clickhouse_user,
-            'X-ClickHouse-Key': self.client.clickhouse_key
-        }
         req.data = body
         prepared_req = req.prepare()
-        # logger.debug('Body content length: %s, df size: %s; content is\n%s',
-        #              prepared_req.headers['Content-Length'], df.shape, df)
 
         try:
             resp = send_chunk(self.session, prepared_req)
