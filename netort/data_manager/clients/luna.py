@@ -6,6 +6,7 @@ from ..common.util import pretty_print, thread_safe_property
 
 from retrying import retry
 
+import json
 import pkg_resources
 import logging
 import requests
@@ -124,6 +125,13 @@ class LunaClient(AbstractClient):
                     uploader_ua=my_user_agent
                 )
             }
+        request_data = dict(
+            self.data_session.tankapi_info,
+            test_start=int(self.data_session.test_start),
+            configs=self._get_encoded_configs_content()
+        )
+        if request_data['host'] is None or request_data['port'] is None:
+            logger.warning('Tankapi host and/or port are unspecified. Artifacts & configs would be unavailable in Luna')
         req = requests.Request(
             'POST',
             "{api_address}{path}".format(
@@ -131,7 +139,7 @@ class LunaClient(AbstractClient):
                 path=self.create_job_path
             ),
             headers=headers,
-            data={'test_start': int(self.job.test_start)}
+            data=request_data
         )
         prepared_req = req.prepare()
         logger.debug('Prepared create_job request:\n%s', pretty_print(prepared_req))
@@ -148,6 +156,17 @@ class LunaClient(AbstractClient):
         else:
             logger.info('Luna job created: %s', job_id)
             return job_id
+
+    def _get_encoded_configs_content(self):
+        config_dir = self.data_session.artifacts_base_dir
+        config_filenames = self.data_session.config_filenames
+        files = config_filenames & set(os.listdir(config_dir))
+        result = {}
+        for file_name in files:
+            with open(os.path.join(config_dir, file_name)) as file:
+                content = file.read()
+                result[file_name] = content
+        return json.dumps(result)
 
     @if_not_failed
     def update_job(self, meta):
@@ -168,7 +187,7 @@ class LunaClient(AbstractClient):
 
     @if_not_failed
     def update_metric(self, meta):
-        for metric_tag, metric_obj in self.job.manager.metrics.items():
+        for metric_tag, metric_obj in self.data_session.manager.metrics.items():
             if not metric_obj.tag:
                 logger.debug('Metric %s has no public tag, skipped updating metric', metric_tag)
                 continue
@@ -211,7 +230,7 @@ class LunaClient(AbstractClient):
     def __test_id_link_to_jobno(self, jobno):
         """  create symlink local_id <-> public_id  """
         # TODO: fix symlink to local_id <-> luna_id
-        link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
+        link_dir = os.path.join(self.data_session.artifacts_base_dir, self.symlink_artifacts_path)
         if not jobno:
             logger.info('Public test id not available, skipped symlink creation for %s', self.symlink_artifacts_path)
             return
@@ -220,19 +239,19 @@ class LunaClient(AbstractClient):
         try:
             os.symlink(
                 os.path.join(
-                    os.path.relpath(self.job.artifacts_base_dir, link_dir), self.job.job_id
+                    os.path.relpath(self.data_session.artifacts_base_dir, link_dir), self.data_session.job_id
                 ),
                 os.path.join(link_dir, str(jobno))
             )
         except OSError:
             logger.warning(
                 'Unable to create %s/%s symlink for test: %s',
-                self.symlink_artifacts_path, jobno, self.job.job_id
+                self.symlink_artifacts_path, jobno, self.data_session.job_id
             )
         else:
             logger.debug(
                 'Symlink %s/%s created for job: %s',
-                self.symlink_artifacts_path, jobno, self.job.job_id
+                self.symlink_artifacts_path, jobno, self.data_session.job_id
             )
 
     def close(self, test_end):
@@ -247,7 +266,7 @@ class LunaClient(AbstractClient):
         self.worker.join()
         self.register_worker.stop()
         self.register_worker.join()
-        self._close_job(duration=test_end-self.job.test_start)
+        self._close_job(duration=test_end-self.data_session.test_start)
         # FIXME hardcoded host
         # FIXME we dont know front hostname, because api address now is clickhouse address
         logger.info('Luna job url: %s%s', 'https://luna.yandex-team.ru/tests/', self.job_number)
@@ -270,9 +289,9 @@ class RegisterWorkerThread(QueueWorker):
         self.client = client
         self.session = requests.session()
         # Register all metrics not registered yet
-        for metric_id in self.client.job.manager.metrics:
+        for metric_id in self.client.data_session.manager.metrics:
             if metric_id not in self.client.public_ids:
-                metric = self.client.job.manager.get_metric_by_id(metric_id)
+                metric = self.client.data_session.manager.get_metric_by_id(metric_id)
                 self.queue.put(metric)
 
     def register(self, metric):
@@ -362,7 +381,7 @@ class WorkerThread(QueueWorker):
 
     def __update_df(self, data_type, df):
         metric_local_id = df['metric_local_id'].iloc[0]
-        metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+        metric = self.client.data_session.manager.get_metric_by_id(metric_local_id)
 
         if not metric:
             logger.warning('Received unknown metric: %s! Ignored.', metric_local_id)

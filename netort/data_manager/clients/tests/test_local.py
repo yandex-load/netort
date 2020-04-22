@@ -60,10 +60,9 @@ def data_session(tmp_path):
                 'type': 'local_storage',
             }
         ],
-        'test_start': int(time.time()*1e6),
-        'artifacts_base_dir': str(artifacts_base_dir)
+        'test_start': int(time.time()*1e6)
     }
-    data_session = DataSession(config=config)
+    data_session = DataSession(config=config, artifacts_dir=str(artifacts_base_dir))
     return data_session
 
 
@@ -76,10 +75,9 @@ def test_dir_created(tmp_path):
                 'type': 'local_storage',
             }
         ],
-        'test_start': int(time.time()*1e6),
-        'artifacts_base_dir': str(artifacts_base_dir)
+        'test_start': int(time.time()*1e6)
     }
-    data_session = DataSession(config=config)
+    data_session = DataSession(config=config, artifacts_dir=str(artifacts_base_dir))
     # TODO: make this pass. Datasession dir and meta.json should be created as soon as possible
     # assert os.path.isdir(artifacts_base_dir), "Artifacts base dir should exist after datasession have been created"
     # assert os.path.isdir(data_session.artifacts_dir), "Artifacts dir should exist after datasession have been created"

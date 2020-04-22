@@ -72,7 +72,7 @@ class LocalStorageClient(AbstractClient):
         self.processing_thread.stop()
         logger.info('Joining local client processing thread...')
         self.processing_thread.join()
-        logger.info('Local client finished its work. Artifacts are here %s', self.job.artifacts_dir)
+        logger.info('Local client finished its work. Artifacts are here %s', self.data_session.artifacts_dir)
 
 
 class ProcessingThread(threading.Thread):
@@ -87,7 +87,7 @@ class ProcessingThread(threading.Thread):
     def __create_artifact(self, metric_full_name):
         self.file_streams[metric_full_name] = io.open(
             os.path.join(
-                self.client.job.artifacts_dir, "{}.data".format(metric_full_name)
+                self.client.data_session.artifacts_dir, "{}.data".format(metric_full_name)
             ),
             mode='w'
         )
@@ -111,7 +111,7 @@ class ProcessingThread(threading.Thread):
             time.sleep(1)
         else:
             for metric_local_id, df_grouped_by_id in df.groupby(level=0, sort=False):
-                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+                metric = self.client.data_session.manager.get_metric_by_id(metric_local_id)
                 if not metric:
                     logger.warning('Received unknown metric id: %s', metric_local_id)
                     return
@@ -148,7 +148,7 @@ class ProcessingThread(threading.Thread):
 
     def __close_files_and_dump_meta(self):
         [self.file_streams[file_].close() for file_ in self.file_streams]
-        with open(os.path.join(self.client.job.artifacts_dir, self.client.metrics_meta_fname), 'w') as meta_f:
+        with open(os.path.join(self.client.data_session.artifacts_dir, self.client.metrics_meta_fname), 'w') as meta_f:
             json.dump(
                 {"metrics": self.client.registered_meta, "job_meta": self.client.meta},
                 meta_f,

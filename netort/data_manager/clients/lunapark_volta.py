@@ -118,7 +118,7 @@ class LunaparkVoltaClient(AbstractClient):
 
     def __test_id_link_to_jobno(self):
         """  create symlink local_id <-> public_id  """
-        link_dir = os.path.join(self.job.artifacts_base_dir, self.symlink_artifacts_path)
+        link_dir = os.path.join(self.data_session.artifacts_base_dir, self.symlink_artifacts_path)
         if not self._job_number:
             logger.info('Public test id not available, skipped symlink creation for %s', self.symlink_artifacts_path)
             return
@@ -127,18 +127,18 @@ class LunaparkVoltaClient(AbstractClient):
         try:
             os.symlink(
                 os.path.join(
-                    os.path.relpath(self.job.artifacts_base_dir, link_dir), self.job.job_id
+                    os.path.relpath(self.data_session.artifacts_base_dir, link_dir), self.data_session.job_id
                 ),
                 os.path.join(link_dir, str(self.job_number))
             )
         except OSError:
             logger.warning(
                 'Unable to create %s/%s symlink for test: %s',
-                self.symlink_artifacts_path, self.job_number, self.job.job_id
+                self.symlink_artifacts_path, self.job_number, self.data_session.job_id
             )
         else:
             logger.debug(
-                'Symlink %s/%s created for job: %s', self.symlink_artifacts_path, self.job_number, self.job.job_id
+                'Symlink %s/%s created for job: %s', self.symlink_artifacts_path, self.job_number, self.data_session.job_id
             )
 
     def put(self, data_type, df):
@@ -172,7 +172,7 @@ class LunaparkVoltaClient(AbstractClient):
             'key_date': self.key_date,
             'test_id': "{key_date}_{local_job_id}".format(
                 key_date=self.key_date,
-                local_job_id=self.job.job_id
+                local_job_id=self.data_session.job_id
             ),
             'task': self.task,
             'version': "2"
@@ -201,10 +201,10 @@ class LunaparkVoltaClient(AbstractClient):
             ),
         )
         req.data = meta
-        req.data['test_start'] = self.job.test_start
+        req.data['test_start'] = self.data_session.test_start
         req.data['test_id'] = "{key_date}_{local_job_id}".format(
             key_date=self.key_date,
-            local_job_id=self.job.job_id
+            local_job_id=self.data_session.job_id
         ),
         prepared_req = req.prepare()
         logger.debug('Prepared update_job request:\n%s', pretty_print(prepared_req))
@@ -254,9 +254,9 @@ class WorkerThread(threading.Thread):
                 df_grouped_by_id['key_date'] = self.client.key_date
                 df_grouped_by_id['test_id'] = "{key_date}_{local_job_id}".format(
                     key_date=self.client.key_date,
-                    local_job_id=self.client.job.job_id
+                    local_job_id=self.client.data_session.job_id
                 )
-                metric = self.client.job.manager.get_metric_by_id(metric_local_id)
+                metric = self.client.data_session.manager.get_metric_by_id(metric_local_id)
                 if metric.type == 'events':
                     try:
                         gb = df_grouped_by_id.groupby('custom_metric_type', sort=False)

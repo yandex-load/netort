@@ -131,10 +131,10 @@ class TypeHistogram(Aggregated, DataType):
 
 
 class AbstractClient(object):
-    def __init__(self, meta, job):
+    def __init__(self, meta, data_session):
         self.local_id = "client_{uuid}".format(uuid=uuid.uuid4())
         self.pending_metrics = []
-        self.job = job
+        self.data_session = data_session
         self.pending_queue = queue.Queue()
         self.meta = meta
 

@@ -42,14 +42,16 @@ class DataSession(object):
         * move config parameters to kwargs, describe them here
         * fight performance issues (probably caused by poor pandas write_csv performance)
     """
-    def __init__(self,  config, test_start=None):
+    def __init__(self, config, tankapi_info=None, config_filenames=None, artifacts_dir=None, test_start=None):
         self.start_ts = time.time()                                                  # type: float
         self.config = config                                                         # type: Dict
         self.operator = self.__get_operator()                                        # type: Text
         self.job_id = config.get('test_id', 'job_{uuid}'.format(uuid=uuid.uuid4()))  # type: Text
         logger.info('Created new local data session: %s', self.job_id)
+        self.tankapi_info = tankapi_info                                             # type: Dict
+        self.config_filenames = config_filenames or set()                            # type: Set
         self.test_start = test_start if test_start else int(time.time() * 10**6)     # type: float
-        self.artifacts_base_dir = config.get('artifacts_base_dir', './logs')         # type: Text
+        self.artifacts_base_dir = artifacts_dir or './logs'                          # type: Text
         self._artifacts_dir = None                                                   # type: Union[Text, None]
         self.manager = DataManager()                                                 # type: DataManager
 
