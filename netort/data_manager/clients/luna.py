@@ -390,7 +390,6 @@ class WorkerThread(QueueWorker):
         if metric.local_id not in self.client.public_ids:
             # no public_id yet, put it back
             self.client.put(data_type, df)
-            logger.debug('No public id for metric {}'.format(metric.local_id))
             self.client.register_worker.register(metric)
             return pd.DataFrame([])
 
