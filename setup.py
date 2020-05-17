@@ -14,7 +14,7 @@ common library for yandex-load org
     url='http://github.com/yandex-load/netort',
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
-        'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas>=0.23.0',
+        'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas==0.24.2',
         'pathlib', 'typing', 'numpy'
     ],
     setup_requires=[
