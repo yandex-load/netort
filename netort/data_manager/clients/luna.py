@@ -34,7 +34,7 @@ RETRY_ARGS = dict(
 )
 
 SLEEP_ON_EMPTY = 0.2  # pause in seconds before checking empty queue on new items
-MAX_DF_LENGTH = 20000  # Size of chunk is 20k rows, it's approximately 1Mb in csv
+MAX_DF_LENGTH = 10000  # Size of chunk is 10k rows, it's approximately 0.5Mb in csv
 
 
 @retry(**RETRY_ARGS)
@@ -79,6 +79,7 @@ class LunaClient(AbstractClient):
         self.session = requests.session()
         self.clickhouse_user = meta.get('clickhouse_user', 'lunapark')
         self.clickhouse_key = meta.get('clickhouse_key', 'lunapark')
+        self.max_df_len = meta.get('max_df_len') or MAX_DF_LENGTH
 
         if self.meta.get('api_address'):
             self.api_address = self.meta.get('api_address')
@@ -255,7 +256,6 @@ class LunaClient(AbstractClient):
             )
 
     def close(self, test_end):
-        logger.info('Joining luna client metric registration thread...')
         self.worker.stop()
         if not self.job_number:
             logger.info('Try to interrupt queue')
@@ -264,6 +264,7 @@ class LunaClient(AbstractClient):
             logger.debug('Processing pending uploader queue... qsize: %s', self.pending_queue.qsize())
         logger.info('Joining luna client metric uploader thread...')
         self.worker.join()
+        logger.info('Joining luna client metric registration thread...')
         self.register_worker.stop()
         self.register_worker.join()
         self._close_job(duration=test_end-self.data_session.test_start)
@@ -279,27 +280,55 @@ class LunaClient(AbstractClient):
         self.worker.interrupt()
 
 
-class RegisterWorkerThread(QueueWorker):
+class RegisterWorkerThread(threading.Thread):
     """ Register metrics metadata, get public_id from luna and create map local_id <-> public_id """
     def __init__(self, client):
         """
         :type client: LunaClient
         """
-        super(RegisterWorkerThread, self).__init__(queue.Queue())
+        super(RegisterWorkerThread, self).__init__()
         self.client = client
         self.session = requests.session()
+        self.metrics_to_register = set()
+        self.lock = threading.Lock()
+        self._finished = threading.Event()
+        self._stopped = threading.Event()
+        self._interrupted = threading.Event()
         # Register all metrics not registered yet
         for metric_id in self.client.data_session.manager.metrics:
             if metric_id not in self.client.public_ids:
                 metric = self.client.data_session.manager.get_metric_by_id(metric_id)
-                self.queue.put(metric)
+                self.metrics_to_register.add(metric)
+
+    def stop(self):
+        self._stopped.set()
+
+    def interrupt(self):
+        self._stopped.set()
+        self._interrupted.set()
+
+    def is_finished(self):
+        return self._finished.is_set()
 
     def register(self, metric):
-        self.queue.put(metric)
+        self.lock.acquire()
+        self.metrics_to_register.add(metric)
+        self.lock.release()
 
-    def _process_pending_queue(self, progress=False):
+    def run(self):
+        while not self._stopped.is_set():
+            self._process_pending_queue()
+        while len(self.metrics_to_register) > 0 and not self._interrupted.is_set():
+            self._process_pending_queue()
+        while len(self.metrics_to_register) > 0:
+            self.metrics_to_register.pop()
+        self._finished.set()
+
+    def _process_pending_queue(self):
         try:
-            metric = self.queue.get_nowait()
+            self.lock.acquire()
+            metric = self.metrics_to_register.pop()
+            self.lock.release()
             if metric.local_id not in self.client.public_ids:
                 if metric.parent is not None and metric.parent.local_id not in self.client.public_ids:
                     logger.debug('Metric {} waiting for parent metric {} to be registered'.format(metric.local_id,
@@ -311,9 +340,11 @@ class RegisterWorkerThread(QueueWorker):
                                  metric.tag, metric.local_id, metric.meta)
                     self.client.public_ids[metric.local_id] = metric.tag
         except (HTTPError, ConnectionError, Timeout, TooManyRedirects):
+            self.lock.release()
             logger.error("Luna service unavailable", exc_info=True)
             self.client.interrupt()
-        except queue.Empty:
+        except KeyError:
+            self.lock.release()
             time.sleep(0.5)
 
     def _register_metric(self, metric):
@@ -348,6 +379,9 @@ class RegisterWorkerThread(QueueWorker):
 class WorkerThread(QueueWorker):
     """ Process data """
     def __init__(self, client):
+        """
+        :type client: LunaClient
+        """
         super(WorkerThread, self).__init__(client.pending_queue)
         self.data = {'max_length': 0}
         self.client = client
@@ -407,7 +441,7 @@ class WorkerThread(QueueWorker):
                 self.data[table_name]['dataframe'] = pd.concat([self.data[table_name]['dataframe'], df])
             self.data['max_length'] = self.__update_max_length(len(self.data[table_name]['dataframe']))
 
-        if self.data['max_length'] >= MAX_DF_LENGTH:
+        if self.data['max_length'] >= self.client.max_df_len:
             self.__upload_data()
 
     def __upload_data(self):

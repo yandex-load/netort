@@ -252,7 +252,7 @@ class QueueWorker(threading.Thread):
         self._finished.set()
 
     def _process_pending_queue(self, progress=False):
-        raise NotImplemented
+        raise NotImplementedError
 
     def is_finished(self):
         return self._finished.is_set()

@@ -31,8 +31,8 @@ class TestAggregatorBuffer(object):
         res1 = self.metrics_router._MetricsRouter__from_aggregator_buffer(self.df1, 'metric1', False)
         res2 = self.metrics_router._MetricsRouter__from_aggregator_buffer(self.df2, 'metric1', False)
         assert len(self.df1) + len(self.df2) > len(res1) + len(res2)
-        assert len(self.df1) + len(self.df2) == len(res1) + len(res2) +\
-                                      len(self.metrics_router._MetricsRouter__aggregator_buffer.get('metric1', []))
+        assert len(self.df1) + len(self.df2) == len(res1) + len(res2) + \
+            len(self.metrics_router._MetricsRouter__aggregator_buffer.get('metric1', []))
 
     @pytest.mark.xfail
     def test_buffer_multiple_metrics(self):
@@ -41,6 +41,6 @@ class TestAggregatorBuffer(object):
         res12 = self.metrics_router._MetricsRouter__from_aggregator_buffer(self.df2, 'metric1', False)
         res22 = self.metrics_router._MetricsRouter__from_aggregator_buffer(self.df2, 'metric2', True)
         assert len(self.df1) + len(self.df2) == len(res11) + len(res12) + \
-                                      len(self.metrics_router._MetricsRouter__aggregator_buffer.get('metric1', []))
+            len(self.metrics_router._MetricsRouter__aggregator_buffer.get('metric1', []))
         assert len(self.df1) + len(self.df2) == len(res21) + len(res22)
         assert self.metrics_router._MetricsRouter__aggregator_buffer.get('metric2', []) is None
