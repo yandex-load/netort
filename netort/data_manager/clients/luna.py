@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 from requests import HTTPError, ConnectionError
 from requests.exceptions import Timeout, TooManyRedirects
 
@@ -289,7 +291,7 @@ class RegisterWorkerThread(threading.Thread):
         super(RegisterWorkerThread, self).__init__()
         self.client = client
         self.session = requests.session()
-        self.metrics_to_register = set()
+        self.metrics_to_register = OrderedDict()
         self.lock = threading.Lock()
         self._finished = threading.Event()
         self._stopped = threading.Event()
@@ -298,7 +300,7 @@ class RegisterWorkerThread(threading.Thread):
         for metric_id in self.client.data_session.manager.metrics:
             if metric_id not in self.client.public_ids:
                 metric = self.client.data_session.manager.get_metric_by_id(metric_id)
-                self.metrics_to_register.add(metric)
+                self.metrics_to_register[metric_id] = metric
 
     def stop(self):
         self._stopped.set()
@@ -312,7 +314,7 @@ class RegisterWorkerThread(threading.Thread):
 
     def register(self, metric):
         self.lock.acquire()
-        self.metrics_to_register.add(metric)
+        self.metrics_to_register[metric.local_id] = metric
         self.lock.release()
 
     def run(self):
@@ -320,19 +322,20 @@ class RegisterWorkerThread(threading.Thread):
             self._process_pending_queue()
         while len(self.metrics_to_register) > 0 and not self._interrupted.is_set():
             self._process_pending_queue()
-        while len(self.metrics_to_register) > 0:
-            self.metrics_to_register.pop()
+        if len(self.metrics_to_register) > 0:
+            self.metrics_to_register.clear()
         self._finished.set()
 
     def _process_pending_queue(self):
         try:
             self.lock.acquire()
-            metric = self.metrics_to_register.pop()
+            local_id, metric = self.metrics_to_register.popitem(last=False)
             self.lock.release()
-            if metric.local_id not in self.client.public_ids:
+            if local_id not in self.client.public_ids:
                 if metric.parent is not None and metric.parent.local_id not in self.client.public_ids:
                     logger.debug('Metric {} waiting for parent metric {} to be registered'.format(metric.local_id,
                                                                                                   metric.parent.local_id))
+                    self.register(metric.parent)
                     self.register(metric)
                 else:
                     metric.tag = self._register_metric(metric)
