@@ -2,6 +2,7 @@
 import threading
 
 import pandas as pd
+
 try:
     import queue
 except ImportError:
@@ -9,7 +10,6 @@ except ImportError:
 import uuid
 import numpy as np
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +104,12 @@ class TypeDistribution(Aggregated, DataType):
         data = {ts: np.histogram(s, bins=bins) for ts, s in series.groupby(series.index)}
         # data, bins = np.histogram(series, bins=bins)
         result = pd.concat(
-            [pd.DataFrame.from_dict(
-                {'l': bins[:-1],
-                 'r': bins[1:],
-                 'cnt': cnt,
-                 'ts': ts}
-            ).query('cnt > 0') for ts, (cnt, bins) in data.items()]
+            [pd.DataFrame({'l': bins[:-1],
+                           'r': bins[1:],
+                           'cnt': cnt,
+                           'ts': ts},
+                          columns=['l', 'r', 'cnt', 'ts']
+                          ).query('cnt > 0') for ts, (cnt, bins) in data.items()]
         )
         return result
 
@@ -125,7 +125,7 @@ class TypeHistogram(Aggregated, DataType):
             return pd.DataFrame()
         df = df.set_index(groupby)
         series = df.loc[:, AbstractMetric.VALUE_COL]
-        data = series.groupby([series.index, series.values]).size().reset_index().\
+        data = series.groupby([series.index, series.values]).size().reset_index(). \
             rename(columns={'second': 'ts', 'level_1': 'category', 'value': 'cnt'})
         return data
 
@@ -225,6 +225,7 @@ class AbstractMetric(object):
 
 class QueueWorker(threading.Thread):
     """ Process data """
+
     def __init__(self, _queue):
         """
         :type _queue: queue.Queue
@@ -256,4 +257,3 @@ class QueueWorker(threading.Thread):
 
     def is_finished(self):
         return self._finished.is_set()
-

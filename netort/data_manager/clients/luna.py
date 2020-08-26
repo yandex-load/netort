@@ -114,7 +114,7 @@ class LunaClient(AbstractClient):
         """ Create public Luna job
 
         Returns:
-            job_id (basestring): Luna job id
+            job_id (str): Luna job id
         """
         my_user_agent = None
         try:

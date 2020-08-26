@@ -26,6 +26,12 @@ except ImportError:
     )
     boto = None
 
+try:
+    from library.python import resource as rs
+    pip = False
+except ImportError:
+    pip = True
+
 
 class FormatDetector(object):
     """ Format Detector
@@ -94,7 +100,8 @@ class ResourceManager(object):
         Returns:
             file object
         """
-        self.path = path
+        self.path = rs.find(path) if not pip and path in rs.iterkeys(prefix='resfs/file/load/projects/yandex-tank/')\
+            else path
         opener = None
         # FIXME this parser/matcher should use `urlparse` stdlib
         for opener_name, signature in self.openers.items():
