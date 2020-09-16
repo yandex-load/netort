@@ -188,7 +188,7 @@ class HttpOpener(object):
         For large files returns wrapped http stream.
     """
 
-    def __init__(self, url, timeout=10, attempts=42):
+    def __init__(self, url, timeout=5, attempts=5):
         self._filename = None
         self.url = url
         self.fmt_detector = FormatDetector()
@@ -215,7 +215,7 @@ class HttpOpener(object):
             logger.info(
                 "Resource data is not gzipped and larger than 100MB. Reading from stream.."
             )
-            return HttpStreamWrapper(self.url)
+            return HttpBytesStreamWrapper(self.url)
         else:
             downloaded_f_path = self.download_file(use_cache)
             if fmt == 'gzip':
@@ -319,7 +319,7 @@ class HttpOpener(object):
         return data_length
 
 
-class HttpStreamWrapper:
+class HttpBytesStreamWrapper:
     """
     makes http stream to look like file object
     """
@@ -327,7 +327,7 @@ class HttpStreamWrapper:
     def __init__(self, url):
         self.next = self.__next__
         self.url = url
-        self.buffer = ''
+        self.buffer = b''
         self.pointer = 0
         self.stream_iterator = None
         self._content_consumed = False
@@ -383,7 +383,7 @@ class HttpStreamWrapper:
 
     def seek(self, position):
         if self.pointer:
-            self.buffer = ''
+            self.buffer = b''
             self._reopen_stream()
             self._enhance_buffer()
             while len(self.buffer) < position:
@@ -392,7 +392,7 @@ class HttpStreamWrapper:
             self.buffer = self.buffer[position:]
 
     def __next__(self):
-        while '\n' not in self.buffer:
+        while b'\n' not in self.buffer:
             try:
                 self._enhance_buffer()
             except (
@@ -402,7 +402,7 @@ class HttpStreamWrapper:
                 break
         if not self._content_consumed or self.buffer:
             try:
-                line = self.buffer[:self.buffer.index('\n') + 1]
+                line = self.buffer[:self.buffer.index(b'\n') + 1]
             except ValueError:
                 line = self.buffer
             self.pointer += len(line)
