@@ -354,8 +354,7 @@ class HttpBytesStreamWrapper:
         self.stream.connection.close()
 
     def __iter__(self):
-        while True:
-            yield next(self)
+        return self
 
     def _reopen_stream(self):
         self.stream.connection.close()
