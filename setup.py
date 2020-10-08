@@ -4,9 +4,6 @@ setup(
     name='netort',
     version='0.8.0',
     description='common library for yandex-load org',
-    longer_description='''
-common library for yandex-load org
-''',
     author='Timur Torubarov (load testing)',
     author_email='netort@yandex-team.ru',
     maintainer='Yandex load team',
