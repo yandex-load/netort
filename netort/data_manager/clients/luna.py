@@ -449,7 +449,7 @@ class WorkerThread(QueueWorker):
 
     def __upload_data(self):
         for table_name, data in self.data.items():
-            if table_name is not 'max_length':
+            if table_name != 'max_length':
                 logger.debug('Length of data for %s is %s', table_name, len(data['dataframe']))
                 try:
                     self.__send_upload(table_name, data['dataframe'], data['columns'])
