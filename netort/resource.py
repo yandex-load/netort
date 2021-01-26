@@ -435,7 +435,7 @@ class HttpBytesStreamWrapper:
         try:
             return next(self)
         except StopIteration:
-            return ''
+            return b''
 
 
 class S3Opener(object):
