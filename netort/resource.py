@@ -209,6 +209,8 @@ class HttpOpener(object):
                     timeout=self.timeout)) as stream:
             stream_iterator = stream.raw.stream(100, decode_content=True)
             header = next(stream_iterator)
+            while len(header) < 10:
+                header += next(stream_iterator)
             fmt = self.fmt_detector.detect_format(header)
             logger.debug('Resource %s format detected: %s.', self.url, fmt)
         if not self.force_download and fmt != 'gzip' and self.data_length > 10**8:
