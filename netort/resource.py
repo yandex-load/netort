@@ -22,7 +22,7 @@ try:
 except ImportError:
     logger.warning(
         'Failed to import `boto` package. Install `boto`, otherwise S3 file paths opener wont work',
-        exc_info=True
+        exc_info=False
     )
     boto = None
 
