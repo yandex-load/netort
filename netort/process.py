@@ -12,7 +12,7 @@ def execute(cmd, shell=False, poll_period=1.0, catch_out=False):
         cmd (str or list): command to execute
         shell (bool): invoke inside shell environment
         catch_out (bool): collect process' output
-    
+
     Returns:
         returncode (int): process return code
         stdout (str): collected process stdout (only if catch_out set to true)

@@ -122,4 +122,3 @@ class ValidatedConfig(object):
         for option, setter in self.DYNAMIC_OPTIONS.items():
             config[self.CORE_SECTION][option] = setter()
         return config
-

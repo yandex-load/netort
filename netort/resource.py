@@ -365,14 +365,18 @@ class HttpBytesStreamWrapper:
                 self.url, stream=True, verify=False, timeout=30)
             self.stream_iterator = self.stream.iter_content(self.chunk_size)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            logger.warning('Connection errors or timeout reached trying to reopen stream while downloading resource: %s',
-                        self.url, exc_info=True)
+            logger.warning(
+                'Connection errors or timeout reached trying to reopen stream while downloading resource: %s',
+                self.url, exc_info=True
+            )
             raise
         try:
             self.stream.raise_for_status()
         except requests.exceptions.HTTPError:
-            logger.warning('Invalid HTTP response trying to reopen stream for resource: %s',
-                        self.url, exc_info=True)
+            logger.warning(
+                'Invalid HTTP response trying to reopen stream for resource: %s',
+                self.url, exc_info=True
+            )
             raise
         self._content_consumed = False
 

@@ -15,10 +15,12 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 def string_to_df_microsec(data):
     # start_time = time.time()
     try:
-        df = pd.read_csv(StringIO(data), sep='\t', names=phout_columns, na_values='', dtype=dtypes, quoting=QUOTE_NONE)
-    except CParserError as e:
-        logger.error(e.message)
-        logger.error('Incorrect phout data: {}'.format(data))
+        df = pd.read_csv(
+            StringIO(data), sep='\t', names=phout_columns, na_values='', dtype=dtypes, quoting=QUOTE_NONE  # noqa
+        )
+    except CParserError as e:  # noqa
+        logger.error(e.message)  # noqa
+        logger.error('Incorrect phout data: {}'.format(data))  # noqa
         return
 
     df['ts'] = (df['send_ts'] * 1e6 + df['interval_real']).astype(int)

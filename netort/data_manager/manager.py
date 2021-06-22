@@ -10,7 +10,7 @@ from typing import Callable, Dict, Text, List, Union, Optional, Set, Type
 from .metrics import Metric, Event
 from .clients import available_clients
 from .router import MetricsRouter
-from .common.interfaces import AbstractMetric, DataType, MetricData
+from .common.interfaces import AbstractMetric, DataType, MetricData  # noqa
 
 if six.PY3:
     from queue import Queue

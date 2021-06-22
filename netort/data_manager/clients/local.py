@@ -14,8 +14,7 @@ from builtins import str
 
 logger = logging.getLogger(__name__)
 
-
-""" 
+"""
 output artifact sample:
 
 {"dtypes": {"ts": "int64", "value": "float64"}, "type": "metric", "names": ["ts", "value"]}

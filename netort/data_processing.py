@@ -55,7 +55,7 @@ class Drain(threading.Thread):
 
 class Tee(threading.Thread):
     """Copy items from one queue to multiple in a thread.
-    
+
     Note:
         Items are passed by reference.
     """
@@ -70,7 +70,7 @@ class Tee(threading.Thread):
         # TODO: what is type?!
         super(Tee, self).__init__()
         self.source = source
-        self.destination = destination # TODO: this is actually a list of destinations. Rename.
+        self.destination = destination  # TODO: this is actually a list of destinations. Rename.
         self.type = type
         self._finished = threading.Event()
         self._interrupted = threading.Event()

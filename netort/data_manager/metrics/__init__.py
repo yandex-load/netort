@@ -1,2 +1,2 @@
-from .metric import Metric
-from .event import Event
+from .metric import Metric  # noqa
+from .event import Event  # noqa

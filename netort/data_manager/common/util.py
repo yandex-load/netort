@@ -50,7 +50,8 @@ class thread_safe_property(object):
         self._lock = Lock()
 
     def __get__(self, obj, klass=None):
-        if obj is None: return None
+        if obj is None:
+            return None
         # __get__ may be called concurrently
         with self._lock:
             # another thread may have computed property value
