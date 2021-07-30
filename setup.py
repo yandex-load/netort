@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='netort',
-    version='0.8.0',
+    version='0.8.1',
     description='common library for yandex-load org',
     author='Timur Torubarov (load testing)',
     author_email='netort@yandex-team.ru',
@@ -11,7 +11,7 @@ setup(
     url='http://github.com/yandex-load/netort',
     packages=find_packages(exclude=["tests", "tmp", "docs", "data"]),
     install_requires=[
-        'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas==0.24.2',
+        'pyserial', 'requests', 'retrying', 'cerberus', 'six>=1.12.0', 'pandas<=1.2.5',
         'pathlib', 'typing', 'numpy'
     ],
     setup_requires=[
